@@ -16,6 +16,15 @@ from utils.backdoor_utils import Backdoor_Utils
 import time
 import json
 
+import matplotlib.pyplot as plt
+from sklearn.metrics import roc_curve, auc, roc_auc_score
+from sklearn.preprocessing import LabelBinarizer
+from sklearn.metrics import RocCurveDisplay
+from sklearn.preprocessing import OneHotEncoder
+import math
+from clients import *
+from sign_flibbing_cordinator import *
+
 def find_separate_point(d):
     # d should be flatten and np or list
     d = sorted(d)
@@ -121,6 +130,7 @@ def find_targeted_attack(dict_lHoGs):
 class Server():
     def __init__(self, model, dataLoader, criterion=F.nll_loss, device='cpu'):
         self.clients = []
+        self.clientsNumOfBeingMalicious = []
         self.model = model
         self.dataLoader = dataLoader
         self.device = device
@@ -152,6 +162,8 @@ class Server():
         self.dbscan_eps = 0.5
         self.dbscan_min_samples=5
 
+        SignFlibbingMaliciousCordinator.model = model
+        
     def set_log_path(self, log_path, exp_name, t_run):
         self.log_path = log_path
         self.log_sim_path = '{}/sims_{}_{}.npy'.format(log_path, exp_name, t_run)
@@ -176,6 +188,7 @@ class Server():
 
     def attach(self, c):
         self.clients.append(c)
+        self.clientsNumOfBeingMalicious.append(0)
         self.num_clients = len(self.clients)
 
     def distribute(self):
@@ -285,7 +298,21 @@ class Server():
 
     def train(self, group):
         selectedClients = [self.clients[i] for i in group]
-        for c in selectedClients:
+        SignFlibbingMaliciousCordinator.signFlippingAttackerBeforeAttackGradient = {}
+        SignFlibbingMaliciousCordinator.signFlippingAttackerAvgDelta = {}
+        SignFlibbingMaliciousCordinator.signFlippingAttackerSumDelta = {}
+        SignFlibbingMaliciousCordinator.normalClientDummyValue = {}
+        SignFlibbingMaliciousCordinator.normalClientDummyAvgDelta = {}
+        SignFlibbingMaliciousCordinator.normalClientDummySumDelta = {}
+        SignFlibbingMaliciousCordinator.signFlippingAttackers = []
+        SignFlibbingMaliciousCordinator.numberOfSignFlippingAttackers = 0
+        SignFlibbingMaliciousCordinator.currentIteration = self.iter
+        SignFlibbingMaliciousCordinator.signFlippingChoosenGradientInThisIteration = {}
+        SignFlibbingMaliciousCordinator.signFlippingChoosenAvgDeltaInThisIteration = {}
+        SignFlibbingMaliciousCordinator.signFlippingChoosenSumDeltaInThisIteration = {}
+        SignFlibbingMaliciousCordinator.signFlippingChoosenhogAvgLenInThisIteration = {}
+        
+        for index, c in enumerate(selectedClients):
             c.train()
             c.update()
 

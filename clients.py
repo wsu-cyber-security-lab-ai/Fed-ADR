@@ -25,6 +25,9 @@ class Client():
         # for moving average of gradient updates
         self.K_avg = 3 # window size of moving average of grad updates
         self.hog_avg = deque(maxlen=self.K_avg)
+
+        self.isSignFlippingAttacker = False
+
         #logging.info(f"Init client {cid} with size window avg grad={self.K_avg}")
 
     def init_stateChange(self):

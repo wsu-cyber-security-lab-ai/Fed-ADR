@@ -9,6 +9,9 @@ from utils.backdoor_semantic_utils import SemanticBackdoor_Utils
 from utils.backdoor_utils import Backdoor_Utils
 from clients import *
 from utils.blur_images import GaussianSmoothing
+import random
+import statistics
+from sign_flibbing_cordinator import *
 
 class Unreliable_client(Client):
     def __init__(self, cid, model, dataLoader, optimizer, criterion=F.nll_loss,
@@ -200,23 +203,56 @@ class Attacker_SemanticBackdoor(Client):
 
 class Attacker_Omniscient(Client):
     def __init__(self, cid, model, dataLoader, optimizer, criterion=F.nll_loss,
-            device='cpu', scale=1, inner_epochs=1):
+            device='cpu', scale=1, inner_epochs=1, isSignFlippingAttacker=False):
         super(Attacker_Omniscient, self).__init__(cid, model, dataLoader,
             optimizer, criterion, device, inner_epochs)
         logging.info("init ATTACK OMNISCIENT Client {}".format(cid))
         self.scale = scale
+        self.isSignFlippingAttacker = isSignFlippingAttacker
 
     def update(self):
         assert self.isTrained, 'nothing to update, call train() to obtain gradients'
         newState = self.model.state_dict()
         trainable_parameter = utils.getTrainableParameters(self.model)
+
+        isNewMalicoiusClientCalculated = False
+        newMaliciousClient = None
+        if self.isSignFlippingAttacker == True:
+            result = SignFlibbingMaliciousCordinator.addMaliciousClientUpdate(self)
+            isNewMalicoiusClientCalculated = result["isNewMalicoiusClientCalculated"]
+            newMaliciousClient = result["newMaliciousClient"]
+            # print("isNewMalicoiusClientCalculated", isNewMalicoiusClientCalculated)
+            # print("cid", self.cid)
+            # print()
+                
         for p in self.originalState:
             self.stateChange[p] = newState[p] - self.originalState[p]
             if p not in trainable_parameter:
                 continue
             #             if not "FloatTensor" in self.originalState[p].type():
             #                 continue
-            self.stateChange[p] *= (-self.scale)
+
+            if isNewMalicoiusClientCalculated == True:
+                self.stateChange[p] = newMaliciousClient[p]
+
+
+            # if isNewMalicoiusClientCalculated == True:
+            #     # Calculate the new average delta (old mean and the new state value averaged)
+            #     # Equivalent to: oldAvgDelta = (old_mean + new_value) / 2
+            #     oldAvgDelta = (self.avg_delta[p] + self.stateChange[p]) / 2  
+
+            #     # Determine the total number of values including the new one
+            #     # Equivalent to: lenOfAllData = n (number of data points)
+            #     lenOfAllData = (len(self.hog_avg) + 1)
+
+            #     # Adjust the newState[p] to ensure the desired new mean (newMaliciousClient[p])
+            #     # Using the derived formula: x_n' = (new_mean * n) - ((old_mean * n) - x_n)
+            #     newAdjustedState = (newMaliciousClient[p] * lenOfAllData) - ((oldAvgDelta * lenOfAllData) - self.stateChange[p])
+
+            #     # newState[p] = (newAdjustedState)
+            #     self.stateChange[p] = newAdjustedState
+
+            # self.stateChange[p] *= -(self.scale) # this is the point where sign flipping is made
             self.sum_hog[p] += self.stateChange[p]
             K_ = len(self.hog_avg)
             if K_ == 0:
@@ -228,6 +264,16 @@ class Attacker_Omniscient(Client):
 
         self.hog_avg.append(self.stateChange)
         self.isTrained = False
+
+        if isNewMalicoiusClientCalculated == True:
+            SignFlibbingMaliciousCordinator.signFlippingChoosenGradientInThisIteration[self.cid] = self.stateChange
+            SignFlibbingMaliciousCordinator.signFlippingChoosenAvgDeltaInThisIteration[self.cid] = self.avg_delta
+            SignFlibbingMaliciousCordinator.signFlippingChoosenSumDeltaInThisIteration[self.cid] = self.sum_hog
+            SignFlibbingMaliciousCordinator.signFlippingChoosenhogAvgLenInThisIteration[self.cid] = len(self.hog_avg)
+
+        # print(SignFlibbingMaliciousCordinator.currentIteration)
+        # print(SignFlibbingMaliciousCordinator.signFlippingChoosenGradientInThisIteration.keys())
+        # print()
 
 class Attacker_AddNoise_Grad(Client):
     def __init__(self, cid, model, dataLoader, optimizer, criterion=F.nll_loss,
