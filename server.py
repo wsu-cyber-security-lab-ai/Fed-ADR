@@ -128,7 +128,7 @@ def find_targeted_attack(dict_lHoGs):
     return sus_tAtk_id
 
 class Server():
-    def __init__(self, model, dataLoader, criterion=F.nll_loss, device='cpu'):
+    def __init__(self, model, dataLoader, criterion=F.nll_loss, device='cpu', minimumIterationToStartTheAttack=5):
         self.clients = []
         self.clientsNumOfBeingMalicious = []
         self.model = model
@@ -162,6 +162,8 @@ class Server():
         self.dbscan_eps = 0.5
         self.dbscan_min_samples=5
 
+        self.minimumIterationToStartTheAttack = minimumIterationToStartTheAttack
+        SignFlibbingMaliciousCordinator.minimumIterationToStartTheAttack = minimumIterationToStartTheAttack
         SignFlibbingMaliciousCordinator.model = model
         
     def set_log_path(self, log_path, exp_name, t_run):

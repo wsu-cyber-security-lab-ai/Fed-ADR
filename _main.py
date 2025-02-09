@@ -96,7 +96,7 @@ def main(args):
 
     # create server instance
     model0 = Net()
-    server = Server(model0, testData, criterion, device)
+    server = Server(model0, testData, criterion, device, args.minimumIterationToStartTheAttack)
     server.set_AR(args.AR)
     if args.dataset == 'cifar':
         #server.set_AR_param(dbscan_eps=35.) # OK for untargeted attack, but does not detect potential targeted attack

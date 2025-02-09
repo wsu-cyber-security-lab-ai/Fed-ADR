@@ -7,7 +7,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--batch_size", help='Default=64', type=int, default=64)
     parser.add_argument("--test_batch_size", help='Default=64',type=int, default=64)
-    parser.add_argument("--threshold", help='Default=1',type=int, default=1)
+    parser.add_argument("--minimumIterationToStartTheAttack", help='Default=5',type=int, default=1)
     parser.add_argument("--epochs", type=int, default=10,
         help='Default is 10 epochs.')
     parser.add_argument("--optimizer", type=str, default='SGD',

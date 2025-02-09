@@ -34,7 +34,7 @@ class SignFlibbingMaliciousCordinator():
     numberOfSignFlippingAttackers = 0
     model = None
     minimumNumberOfMaliciousClientsThreshold = 0
-    minimumIterationToStart = 5
+    minimumIterationToStartTheAttack = 0
 
     samplesThreshold = 5
 
@@ -76,7 +76,7 @@ class SignFlibbingMaliciousCordinator():
 
         modelData = SignFlibbingMaliciousCordinator.model.state_dict()
 
-        if len(SignFlibbingMaliciousCordinator.signFlippingAttackerBeforeAttackGradient) == SignFlibbingMaliciousCordinator.numberOfSignFlippingAttackers and SignFlibbingMaliciousCordinator.currentIteration>=SignFlibbingMaliciousCordinator.minimumIterationToStart and SignFlibbingMaliciousCordinator.numberOfSignFlippingAttackers>=SignFlibbingMaliciousCordinator.minimumNumberOfMaliciousClientsThreshold:
+        if len(SignFlibbingMaliciousCordinator.signFlippingAttackerBeforeAttackGradient) == SignFlibbingMaliciousCordinator.numberOfSignFlippingAttackers and SignFlibbingMaliciousCordinator.currentIteration>=SignFlibbingMaliciousCordinator.minimumIterationToStartTheAttack and SignFlibbingMaliciousCordinator.numberOfSignFlippingAttackers>=SignFlibbingMaliciousCordinator.minimumNumberOfMaliciousClientsThreshold:
             dict1 = dict(SignFlibbingMaliciousCordinator.signFlippingChoosenGradientInThisIteration)
             dict2 = SignFlibbingMaliciousCordinator.signFlippingAttackerBeforeAttackGradient
             dict2.update({k: v for k, v in dict1.items() if k in dict2})
