@@ -34,12 +34,12 @@ class SignFlibbingMaliciousCordinator():
     numberOfSignFlippingAttackers = 0
     model = None
     minimumNumberOfMaliciousClientsThreshold = 0
-    minimumIterationToStart=5
+    minimumIterationToStart = 5
 
     samplesThreshold = 5
 
     dbscan_eps = 0.5
-    dbscan_min_samples=5
+    dbscan_min_samples = 5
 
     signFlippingChoosenGradientInThisIteration = {}
     signFlippingChoosenAvgDeltaInThisIteration = {}
@@ -93,6 +93,10 @@ class SignFlibbingMaliciousCordinator():
             dict2 = SignFlibbingMaliciousCordinator.signFlippingAttackerhogAvgLen
             dict2.update({k: v for k, v in dict1.items() if k in dict2})
 
+            SignFlibbingMaliciousCordinator.normalClientDummyValue = {}
+            SignFlibbingMaliciousCordinator.normalClientDummyAvgDelta = {}
+            SignFlibbingMaliciousCordinator.normalClientDummySumDelta = {}
+            SignFlibbingMaliciousCordinator.normalClientDummyhogAvgLen = {}
             
             listOfMaliciousClientsIdsToChooseFrom = list(SignFlibbingMaliciousCordinator.signFlippingAttackerBeforeAttackGradient.keys())
 
@@ -176,49 +180,25 @@ class SignFlibbingMaliciousCordinator():
                 # STAGE 1: Collect long and short HoGs.
                 short_HoGs = {}
                 long_HoGs = {}
+                key = None
 
-                for k in range(SignFlibbingMaliciousCordinator.numberOfClientsTraining):
-                    if k not in SignFlibbingMaliciousCordinator.signFlippingAttackers:
-                        # shortHoGs
-                        avgDect1 = SignFlibbingMaliciousCordinator.normalClientDummyValue[k]
-                        avgDect2 = SignFlibbingMaliciousCordinator.normalClientDummyAvgDelta[k]
-                        n = SignFlibbingMaliciousCordinator.normalClientDummyhogAvgLen[k]
-                        avgValue = OrderedDict({key: (((n* avgDect1[key]) + avgDect2[key]) / (n+1)) for key in avgDect1})
-                        short_HoGs[k] = torch.cat([v.flatten() for v in avgValue.values()]).detach().cpu().numpy()
-                        # longHoGs
-                        sumDect1 = SignFlibbingMaliciousCordinator.normalClientDummyValue[k]
-                        sumDect2 = SignFlibbingMaliciousCordinator.normalClientDummySumDelta[k]
-                        sumValue = OrderedDict({key: (sumDect1[key] + sumDect2[key]) for key in sumDect1})
-                        long_HoGs[k] = torch.cat([v.flatten() for v in sumValue.values()]).detach().cpu().numpy()
-
-                keys = SignFlibbingMaliciousCordinator.signFlippingAttackerBeforeAttackGradient.keys()
-                key = list(keys)[SignFlibbingMaliciousCordinator.numberOfSignFlippingAttackers-1]
-                avgDect1 = newMaliciousClient
-                avgDect2 = SignFlibbingMaliciousCordinator.signFlippingAttackerAvgDelta[key]
-                n = SignFlibbingMaliciousCordinator.signFlippingAttackerhogAvgLen[key]
-                avgValue = OrderedDict({key: (((n* avgDect1[key]) + avgDect2[key]) / (n+1)) for key in avgDect1})
-                short_HoGs[key] = torch.cat([v.flatten() for v in avgValue.values()]).detach().cpu().numpy()
-
-                sumDect1 = newMaliciousClient
-                sumDect2 = SignFlibbingMaliciousCordinator.signFlippingAttackerSumDelta[key]
-                sumValue = OrderedDict({key: (sumDect1[key] + sumDect2[key]) for key in sumDect1})
-                long_HoGs[key] = torch.cat([v.flatten() for v in sumValue.values()]).detach().cpu().numpy()
+                short_HoGs, long_HoGs, key = SignFlibbingMaliciousCordinator.collect_short_long_hogs(newMaliciousClient)
 
                 # STAGE 2 : Divating the mud-hug sign flipping detection method
                 flip_sign_id = set()
-                flip_sign_id = SignFlibbingMaliciousCordinator.get_flipp_sign_attacker(short_HoGs)
+                flip_sign_id = SignFlibbingMaliciousCordinator.get_flipp_sign_attackers(short_HoGs)
 
                 # STAGE 3: Divating the mud-hug un targeted detection method
                 uAtk_id = set()
-                uAtk_id = SignFlibbingMaliciousCordinator.get_additive_noise_attacker(short_HoGs)
+                uAtk_id = SignFlibbingMaliciousCordinator.get_additive_noise_attackers(short_HoGs)
 
                 # STAGE 4: Divating the mud-hug targeted detection method
                 offset_tAtk_id1 = set()
                 if len(long_HoGs) > 1:
-                    offset_tAtk_id1 = SignFlibbingMaliciousCordinator.get_targetted_attacker(long_HoGs)
+                    offset_tAtk_id1 = SignFlibbingMaliciousCordinator.get_targetted_attackers(long_HoGs)
 
                 # STAGE 5: Calcualte best score
-                listOfNumberOfClientMarkedAsMalicious[t] = SignFlibbingMaliciousCordinator.calculate_attacker_score(offset_tAtk_id1, uAtk_id, flip_sign_id, key)
+                listOfNumberOfClientMarkedAsMalicious[t] = SignFlibbingMaliciousCordinator.calculate_attacks_score(offset_tAtk_id1, uAtk_id, flip_sign_id, key)
                 listOfNewMaliciousClient[t] = OrderedDict(newMaliciousClient)
 
                 # print(listOfNumberOfClientMarkedAsMalicious[t])
@@ -244,8 +224,39 @@ class SignFlibbingMaliciousCordinator():
             # TODO stable point 2
         return result
     
+    def collect_short_long_hogs(newMaliciousClient):
+        short_HoGs = {}
+        long_HoGs = {}
+        for k in range(SignFlibbingMaliciousCordinator.numberOfClientsTraining):
+            if k not in SignFlibbingMaliciousCordinator.signFlippingAttackers:
+                # shortHoGs
+                avgDect1 = SignFlibbingMaliciousCordinator.normalClientDummyValue[k]
+                avgDect2 = SignFlibbingMaliciousCordinator.normalClientDummyAvgDelta[k]
+                n = SignFlibbingMaliciousCordinator.normalClientDummyhogAvgLen[k]
+                avgValue = OrderedDict({key: (((n* avgDect1[key]) + avgDect2[key]) / (n+1)) for key in avgDect1})
+                short_HoGs[k] = torch.cat([v.flatten() for v in avgValue.values()]).detach().cpu().numpy()
+                # longHoGs
+                sumDect1 = SignFlibbingMaliciousCordinator.normalClientDummyValue[k]
+                sumDect2 = SignFlibbingMaliciousCordinator.normalClientDummySumDelta[k]
+                sumValue = OrderedDict({key: (sumDect1[key] + sumDect2[key]) for key in sumDect1})
+                long_HoGs[k] = torch.cat([v.flatten() for v in sumValue.values()]).detach().cpu().numpy()
 
-    def get_flipp_sign_attacker(short_HoGs):
+        keys = SignFlibbingMaliciousCordinator.signFlippingAttackerBeforeAttackGradient.keys()
+        key = list(keys)[SignFlibbingMaliciousCordinator.numberOfSignFlippingAttackers-1]
+        avgDect1 = newMaliciousClient
+        avgDect2 = SignFlibbingMaliciousCordinator.signFlippingAttackerAvgDelta[key]
+        n = SignFlibbingMaliciousCordinator.signFlippingAttackerhogAvgLen[key]
+        avgValue = OrderedDict({key: (((n* avgDect1[key]) + avgDect2[key]) / (n+1)) for key in avgDect1})
+        short_HoGs[key] = torch.cat([v.flatten() for v in avgValue.values()]).detach().cpu().numpy()
+
+        sumDect1 = newMaliciousClient
+        sumDect2 = SignFlibbingMaliciousCordinator.signFlippingAttackerSumDelta[key]
+        sumValue = OrderedDict({key: (sumDect1[key] + sumDect2[key]) for key in sumDect1})
+        long_HoGs[key] = torch.cat([v.flatten() for v in sumValue.values()]).detach().cpu().numpy()
+
+        return short_HoGs, long_HoGs, key
+
+    def get_flipp_sign_attackers(short_HoGs):
         flip_sign_id = set()
         non_mal_sHoGs = dict(short_HoGs)
         median_sHoG = np.median(np.array(list(non_mal_sHoGs.values())), axis=0)
@@ -255,13 +266,10 @@ class SignFlibbingMaliciousCordinator():
                 d_cos = np.dot(median_sHoG, v)/(np.linalg.norm(median_sHoG)*np.linalg.norm(v))
                 if d_cos < 0: # angle > 90
                     flip_sign_id.add(i)
-
+        
         return flip_sign_id
 
-    def get_additive_noise_attacker(short_HoGs):
-        # for i in range(SignFlibbingMaliciousCordinator.numberOfClientsTraining):
-        #     if i in flip_sign_id:
-        #         short_HoGs.pop(i)
+    def get_additive_noise_attackers(short_HoGs):
         id_sHoGs, value_sHoGs = np.array(list(short_HoGs.keys())), np.array(list(short_HoGs.values()))
 
         start_t = time.time()
@@ -289,13 +297,9 @@ class SignFlibbingMaliciousCordinator():
             else:
                 sus_tAtk_uRel_id0.add(int(k))
 
-        # print(cluster_sh.labels_)
-        # print(uAtk_id)
-        # print()
-
         return uAtk_id
     
-    def get_targetted_attacker(long_HoGs):
+    def get_targetted_attackers(long_HoGs):
         id_lHoGs = np.array(list(long_HoGs.keys()))
         value_lHoGs = np.array(list(long_HoGs.values()))
 
@@ -306,12 +310,7 @@ class SignFlibbingMaliciousCordinator():
         return offset_tAtk_id1
 
     
-    def calculate_attacker_score(offset_tAtk_id1, uAtk_id, flip_sign_id, key):
-        # print(offset_tAtk_id1)
-        # print(uAtk_id)
-        # print(flip_sign_id)
-        # print(key)
-        # print()
+    def calculate_attacks_score(offset_tAtk_id1, uAtk_id, flip_sign_id, key):
         intersection = offset_tAtk_id1 & uAtk_id & flip_sign_id
         union = offset_tAtk_id1 | uAtk_id | flip_sign_id
         intersection1 = offset_tAtk_id1 & uAtk_id
@@ -354,22 +353,6 @@ class SignFlibbingMaliciousCordinator():
         listOfNumberOfClientMarkedAsMalicious+=len(intersection1) * 2
         listOfNumberOfClientMarkedAsMalicious+=len(intersection2) * 2
         listOfNumberOfClientMarkedAsMalicious+=len(intersection3) * 2
-
-        # if key in flip_sign_id:
-        #     listOfNumberOfClientMarkedAsMalicious[t]-=1
-        
-        # # if key in uAtk_id:
-        # #     listOfNumberOfClientMarkedAsMalicious[t]-=1
-
-        # if key in id_lHoGs:
-        #     listOfNumberOfClientMarkedAsMalicious[t]-=1
-
-        # for aId in id_lHoGs:
-        #     if aId in flip_sign_id:
-        #         listOfNumberOfClientMarkedAsMalicious[t]+=2
-        #     else:
-        #         listOfNumberOfClientMarkedAsMalicious[t]+=1
-        #     listOfClientsMarkedAsMalicious[t].add(int(aId))
 
         return listOfNumberOfClientMarkedAsMalicious
 

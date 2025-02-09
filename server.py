@@ -301,11 +301,14 @@ class Server():
         SignFlibbingMaliciousCordinator.signFlippingAttackerBeforeAttackGradient = {}
         SignFlibbingMaliciousCordinator.signFlippingAttackerAvgDelta = {}
         SignFlibbingMaliciousCordinator.signFlippingAttackerSumDelta = {}
+        SignFlibbingMaliciousCordinator.signFlippingAttackerhogAvgLen = {}
         SignFlibbingMaliciousCordinator.normalClientDummyValue = {}
         SignFlibbingMaliciousCordinator.normalClientDummyAvgDelta = {}
         SignFlibbingMaliciousCordinator.normalClientDummySumDelta = {}
+        SignFlibbingMaliciousCordinator.normalClientDummyhogAvgLen = {}
         SignFlibbingMaliciousCordinator.signFlippingAttackers = []
         SignFlibbingMaliciousCordinator.numberOfSignFlippingAttackers = 0
+        SignFlibbingMaliciousCordinator.numberOfClientsTraining = len(selectedClients)
         SignFlibbingMaliciousCordinator.currentIteration = self.iter
         SignFlibbingMaliciousCordinator.signFlippingChoosenGradientInThisIteration = {}
         SignFlibbingMaliciousCordinator.signFlippingChoosenAvgDeltaInThisIteration = {}
