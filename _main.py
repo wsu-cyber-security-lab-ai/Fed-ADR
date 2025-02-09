@@ -187,7 +187,7 @@ def main(args):
                 optimizer, criterion, device, args.inner_epochs, args.source_labels, args.target_label)
         elif i in args.list_uatk_flip_sign:
             client_i = Attacker_Omniscient(i, model, trainData[i], optimizer,
-                criterion, device, args.omniscient_scale, args.inner_epochs)
+                criterion, device, args.omniscient_scale, args.inner_epochs, isSignFlippingAttacker=True)
         elif i in args.list_uatk_add_noise:
             client_i = Attacker_AddNoise_Grad(i, model, trainData[i], optimizer,
                 criterion, device, args.mean_add_noise, args.std_add_noise,

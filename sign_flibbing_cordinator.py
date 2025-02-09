@@ -34,6 +34,8 @@ class SignFlibbingMaliciousCordinator():
     numberOfSignFlippingAttackers = 0
     model = None
     minimumNumberOfMaliciousClientsThreshold = 0
+    minimumIterationToStart=5
+
     samplesThreshold = 5
 
     dbscan_eps = 0.5
@@ -74,7 +76,7 @@ class SignFlibbingMaliciousCordinator():
 
         modelData = SignFlibbingMaliciousCordinator.model.state_dict()
 
-        if len(SignFlibbingMaliciousCordinator.signFlippingAttackerBeforeAttackGradient) == SignFlibbingMaliciousCordinator.numberOfSignFlippingAttackers and SignFlibbingMaliciousCordinator.currentIteration>=3 and SignFlibbingMaliciousCordinator.numberOfSignFlippingAttackers>=SignFlibbingMaliciousCordinator.minimumNumberOfMaliciousClientsThreshold:
+        if len(SignFlibbingMaliciousCordinator.signFlippingAttackerBeforeAttackGradient) == SignFlibbingMaliciousCordinator.numberOfSignFlippingAttackers and SignFlibbingMaliciousCordinator.currentIteration>=SignFlibbingMaliciousCordinator.minimumIterationToStart and SignFlibbingMaliciousCordinator.numberOfSignFlippingAttackers>=SignFlibbingMaliciousCordinator.minimumNumberOfMaliciousClientsThreshold:
             dict1 = dict(SignFlibbingMaliciousCordinator.signFlippingChoosenGradientInThisIteration)
             dict2 = SignFlibbingMaliciousCordinator.signFlippingAttackerBeforeAttackGradient
             dict2.update({k: v for k, v in dict1.items() if k in dict2})
@@ -212,7 +214,8 @@ class SignFlibbingMaliciousCordinator():
 
                 # STAGE 4: Divating the mud-hug targeted detection method
                 offset_tAtk_id1 = set()
-                offset_tAtk_id1 = SignFlibbingMaliciousCordinator.get_targetted_attacker(long_HoGs)
+                if len(long_HoGs) > 1:
+                    offset_tAtk_id1 = SignFlibbingMaliciousCordinator.get_targetted_attacker(long_HoGs)
 
                 # STAGE 5: Calcualte best score
                 listOfNumberOfClientMarkedAsMalicious[t] = SignFlibbingMaliciousCordinator.calculate_attacker_score(offset_tAtk_id1, uAtk_id, flip_sign_id, key)
