@@ -4,7 +4,7 @@ from copy import deepcopy
 
 import torch
 import torch.nn.functional as F
-import logging
+import logging, coloredlogs
 from datetime import datetime
 import numpy as np
 from sklearn.cluster import KMeans, AgglomerativeClustering, DBSCAN
@@ -165,6 +165,8 @@ class Server():
         self.minimumIterationToStartTheAttack = minimumIterationToStartTheAttack
         SignFlibbingMaliciousCordinator.minimumIterationToStartTheAttack = minimumIterationToStartTheAttack
         SignFlibbingMaliciousCordinator.model = model
+
+        coloredlogs.install()
         
     def set_log_path(self, log_path, exp_name, t_run):
         self.log_path = log_path
@@ -318,8 +320,13 @@ class Server():
         SignFlibbingMaliciousCordinator.signFlippingChoosenhogAvgLenInThisIteration = {}
         
         for index, c in enumerate(selectedClients):
+            start_time = time.time()
             c.train()
             c.update()
+            end_time = time.time()
+            execution_time = end_time - start_time
+            print(f"Execution time for client id {c.cid} is: {execution_time} seconds")
+            print()
 
         if self.isSaveChanges:
             self.saveChanges(selectedClients)

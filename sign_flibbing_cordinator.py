@@ -108,57 +108,74 @@ class SignFlibbingMaliciousCordinator():
                     SignFlibbingMaliciousCordinator.normalClientDummySumDelta[i] = (SignFlibbingMaliciousCordinator.signFlippingAttackerSumDelta[selectedRandomMaliciousKey])
                     SignFlibbingMaliciousCordinator.normalClientDummyhogAvgLen[i] = (SignFlibbingMaliciousCordinator.signFlippingAttackerhogAvgLen[selectedRandomMaliciousKey])
 
+            # TODO stable point 1
+
             listOfParamters = {}
             listOfParamtersMean = {}
             listOfParamtersStandardDivation = {}
+
+            numLow = {}
+            numHigh = {}
+
             newMaliciousClient = {}
-
-            # TODO stable point 1
-
             listOfNewMaliciousClient = {}
             listOfNumberOfClientMarkedAsMalicious = {}
             listOfClientsMarkedAsMalicious = {}
+
+            for p in SignFlibbingMaliciousCordinator.model.state_dict():
+                if p not in trainable_parameter:
+                    continue
+                listOfParamters[p] = []
+                listOfParamtersMean[p] = []
+                listOfParamtersStandardDivation[p] = []
+
+                for i in SignFlibbingMaliciousCordinator.signFlippingAttackerBeforeAttackGradient:
+                    malicoiusClient = (SignFlibbingMaliciousCordinator.signFlippingAttackerBeforeAttackGradient[i])
+                    listOfParamters[p].append(malicoiusClient[p])
+
+                arr = np.array(listOfParamters[p])
+                listOfParamtersMean[p] = np.mean(arr, axis=0)
+                listOfParamtersStandardDivation[p] = np.std(arr, axis=0)
+
+                A = np.array(modelData[p])
+                B = np.array(listOfParamtersMean[p])
+
+                if len(list(A.shape))==0:
+                    A = np.array([modelData[p]])
+                    B = np.array([listOfParamtersMean[p]])
+
+                cosine = np.sum(A*B)/(norm(A)*norm(B))
+
+                flattened_cosine = cosine.flatten()
+                mean_flattened_cosine = flattened_cosine.mean()
+
+                numLow[p] = np.array(listOfParamtersMean[p]) - (4 * np.array(listOfParamtersStandardDivation[p]))
+                numHigh[p] = np.array(listOfParamtersMean[p]) - (3 * np.array(listOfParamtersStandardDivation[p]))
+
+                if mean_flattened_cosine < 0:
+                    numLow[p] = np.array(listOfParamtersMean[p]) + (3 * np.array(listOfParamtersStandardDivation[p]))
+                    numHigh[p] = np.array(listOfParamtersMean[p]) + (4 * np.array(listOfParamtersStandardDivation[p]))
+
+            # STAGE 1: Collect long and short HoGs.
+            main_short_HoGs = {}
+            main_long_HoGs = {}
+            keys = SignFlibbingMaliciousCordinator.signFlippingAttackerBeforeAttackGradient.keys()
+            key = list(keys)[SignFlibbingMaliciousCordinator.numberOfSignFlippingAttackers-1]
+
+            main_short_HoGs, main_long_HoGs = SignFlibbingMaliciousCordinator.collect_short_long_hogs(newMaliciousClient)
+
+            # STAGE 2: Formalate the attack
 
             for t in range(SignFlibbingMaliciousCordinator.samplesThreshold):
                 for p in SignFlibbingMaliciousCordinator.model.state_dict():
                     if p not in trainable_parameter:
                         continue
-                    listOfParamters[p] = []
-                    listOfParamtersMean[p] = []
-                    listOfParamtersStandardDivation[p] = []
 
-                    for i in SignFlibbingMaliciousCordinator.signFlippingAttackerBeforeAttackGradient:
-                        malicoiusClient = (SignFlibbingMaliciousCordinator.signFlippingAttackerBeforeAttackGradient[i])
-                        listOfParamters[p].append(malicoiusClient[p])
+                    newSelectedSampledValues = np.full_like(numLow[p], 0)
 
-                    arr = np.array(listOfParamters[p])
-                    listOfParamtersMean[p] = np.mean(arr, axis=0)
-                    listOfParamtersStandardDivation[p] = np.std(arr, axis=0)
-
-                    A = np.array(modelData[p])
-                    B = np.array(listOfParamtersMean[p])
-
-                    if len(list(A.shape))==0:
-                        A = np.array([modelData[p]])
-                        B = np.array([listOfParamtersMean[p]])
-
-                    cosine = np.sum(A*B)/(norm(A)*norm(B))
-
-                    flattened_cosine = cosine.flatten()
-                    mean_flattened_cosine = flattened_cosine.mean()
-
-                    numLow = np.array(listOfParamtersMean[p]) - (4 * np.array(listOfParamtersStandardDivation[p]))
-                    numHigh = np.array(listOfParamtersMean[p]) - (3 * np.array(listOfParamtersStandardDivation[p]))
-
-                    if mean_flattened_cosine < 0:
-                        numLow = np.array(listOfParamtersMean[p]) + (3 * np.array(listOfParamtersStandardDivation[p]))
-                        numHigh = np.array(listOfParamtersMean[p]) + (4 * np.array(listOfParamtersStandardDivation[p]))
-
-                    newSelectedSampledValues = np.full_like(numLow, 0)
-
-                    for index, value in np.ndenumerate(numLow):
+                    for index, value in np.ndenumerate(numLow[p]):
                         rangeStart = value
-                        rangeEnd = numHigh[index]
+                        rangeEnd = numHigh[p][index]
 
                         difference = rangeEnd - rangeStart
                         step = difference / SignFlibbingMaliciousCordinator.samplesThreshold
@@ -177,27 +194,34 @@ class SignFlibbingMaliciousCordinator():
 
                     newMaliciousClient[p] = torch.tensor(newSelectedSampledValues)
 
-                # STAGE 1: Collect long and short HoGs.
-                short_HoGs = {}
-                long_HoGs = {}
-                key = None
+                short_HoGs = deepcopy(main_short_HoGs)
+                long_HoGs = deepcopy(main_long_HoGs)
 
-                short_HoGs, long_HoGs, key = SignFlibbingMaliciousCordinator.collect_short_long_hogs(newMaliciousClient)
+                avgDect1 = newMaliciousClient
+                avgDect2 = SignFlibbingMaliciousCordinator.signFlippingAttackerAvgDelta[key]
+                n = SignFlibbingMaliciousCordinator.signFlippingAttackerhogAvgLen[key]
+                avgValue = OrderedDict({key: (((n* avgDect1[key]) + avgDect2[key]) / (n+1)) for key in avgDect1})
+                short_HoGs[key] = torch.cat([v.flatten() for v in avgValue.values()]).detach().cpu().numpy()
 
-                # STAGE 2 : Divating the mud-hug sign flipping detection method
+                sumDect1 = newMaliciousClient
+                sumDect2 = SignFlibbingMaliciousCordinator.signFlippingAttackerSumDelta[key]
+                sumValue = OrderedDict({key: (sumDect1[key] + sumDect2[key]) for key in sumDect1})
+                long_HoGs[key] = torch.cat([v.flatten() for v in sumValue.values()]).detach().cpu().numpy()
+
+                # STAGE 2 - step 1 : Divating the mud-hug sign flipping detection method
                 flip_sign_id = set()
                 flip_sign_id = SignFlibbingMaliciousCordinator.get_flipp_sign_attackers(short_HoGs)
 
-                # STAGE 3: Divating the mud-hug un targeted detection method
+                # STAGE 2 - step 2: Divating the mud-hug un targeted detection method
                 uAtk_id = set()
                 uAtk_id = SignFlibbingMaliciousCordinator.get_additive_noise_attackers(short_HoGs)
 
-                # STAGE 4: Divating the mud-hug targeted detection method
+                # STAGE 2 - step 3: Divating the mud-hug targeted detection method
                 offset_tAtk_id1 = set()
                 if len(long_HoGs) > 1:
                     offset_tAtk_id1 = SignFlibbingMaliciousCordinator.get_targetted_attackers(long_HoGs)
 
-                # STAGE 5: Calcualte best score
+                # STAGE 2 - step 4: Calcualte best score
                 listOfNumberOfClientMarkedAsMalicious[t] = SignFlibbingMaliciousCordinator.calculate_attacks_score(offset_tAtk_id1, uAtk_id, flip_sign_id, key)
                 listOfNewMaliciousClient[t] = OrderedDict(newMaliciousClient)
 
@@ -205,7 +229,6 @@ class SignFlibbingMaliciousCordinator():
                 # print(t)
                 # print()
 
-            
             items = list(listOfNumberOfClientMarkedAsMalicious.items())
             larget_value_index = 0
             for i in range(len(items)):
@@ -240,21 +263,7 @@ class SignFlibbingMaliciousCordinator():
                 sumDect2 = SignFlibbingMaliciousCordinator.normalClientDummySumDelta[k]
                 sumValue = OrderedDict({key: (sumDect1[key] + sumDect2[key]) for key in sumDect1})
                 long_HoGs[k] = torch.cat([v.flatten() for v in sumValue.values()]).detach().cpu().numpy()
-
-        keys = SignFlibbingMaliciousCordinator.signFlippingAttackerBeforeAttackGradient.keys()
-        key = list(keys)[SignFlibbingMaliciousCordinator.numberOfSignFlippingAttackers-1]
-        avgDect1 = newMaliciousClient
-        avgDect2 = SignFlibbingMaliciousCordinator.signFlippingAttackerAvgDelta[key]
-        n = SignFlibbingMaliciousCordinator.signFlippingAttackerhogAvgLen[key]
-        avgValue = OrderedDict({key: (((n* avgDect1[key]) + avgDect2[key]) / (n+1)) for key in avgDect1})
-        short_HoGs[key] = torch.cat([v.flatten() for v in avgValue.values()]).detach().cpu().numpy()
-
-        sumDect1 = newMaliciousClient
-        sumDect2 = SignFlibbingMaliciousCordinator.signFlippingAttackerSumDelta[key]
-        sumValue = OrderedDict({key: (sumDect1[key] + sumDect2[key]) for key in sumDect1})
-        long_HoGs[key] = torch.cat([v.flatten() for v in sumValue.values()]).detach().cpu().numpy()
-
-        return short_HoGs, long_HoGs, key
+        return short_HoGs, long_HoGs
 
     def get_flipp_sign_attackers(short_HoGs):
         flip_sign_id = set()

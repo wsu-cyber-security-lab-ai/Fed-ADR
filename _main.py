@@ -5,7 +5,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from tensorboardX import SummaryWriter
 import os
-import logging
+import logging, coloredlogs
 from datetime import datetime
 
 from clients_attackers import *
