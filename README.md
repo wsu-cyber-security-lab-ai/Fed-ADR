@@ -31,10 +31,9 @@ source venv/bin/activate
 
 * <summary>Usage:</summary>
 You can refer to a script to run experiments: `run_hete_fashion.sh`
-bash ./run_hete_fashion.sh
+run in linux `bash ./run_hete_fashion.sh `
 
-You can use this command to show graph results: `run_hete_fashion.sh`
-tensorboard --logdir=logs
+You can use this command to show graph results: `tensorboard --logdir=logs`
 
 More arguments options can be found below:
 
