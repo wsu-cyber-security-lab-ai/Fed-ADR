@@ -318,16 +318,12 @@ class Server():
         SignFlibbingMaliciousCordinator.signFlippingChoosenAvgDeltaInThisIteration = {}
         SignFlibbingMaliciousCordinator.signFlippingChoosenSumDeltaInThisIteration = {}
         SignFlibbingMaliciousCordinator.signFlippingChoosenhogAvgLenInThisIteration = {}
-        
+
         for index, c in enumerate(selectedClients):
             start_time = time.time()
             c.train()
             c.update()
-            end_time = time.time()
-            execution_time = end_time - start_time
-            print(f"Execution time for client id {c.cid} is: {execution_time} seconds")
-            print()
-
+            
         if self.isSaveChanges:
             self.saveChanges(selectedClients)
 

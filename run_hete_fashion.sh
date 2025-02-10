@@ -24,11 +24,11 @@ DATASET="mnist"
 LR=1e-2 # SGD optimizer learning rate
 WD=1e-4  # weight-decay
 MOMENTUM=0.5 # SGD optimizer momentum
-GLOBAL_EPOCHS=20
+GLOBAL_EPOCHS=40
 LOCAL_EPOCHS=4
 STD_UR=30
-NUM_CLIENTS=40
-MINIMUM_ITERATION_TO_START_THE_ATTACK=3
+NUM_CLIENTS=100
+MINIMUM_ITERATION_TO_START_THE_ATTACK=10
 LOADER_TYPE=dirichlet
 
 # We train the FL model with SGD optimizer (learning
