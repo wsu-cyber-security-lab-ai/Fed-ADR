@@ -180,13 +180,13 @@ def main(args):
             client_i = Attacker_SemanticBackdoor(i, model, trainData[i],
                 optimizer, criterion, device, args.inner_epochs)
         elif i in args.list_tatk_label_flipping:
-            client_i = Attacker_LabelFlipping1to7(i, model, trainData[i],
-                optimizer, criterion, device, args.inner_epochs, args.source_labels[0], args.target_label)
+            client_i = Attacker_LabelFlipping_Using_Coordinator(i, model, trainData[i],
+                optimizer, criterion, device, args.inner_epochs, args.source_labels[0], args.target_label, isLabelFlippingAttacker=True)
         elif i in args.list_tatk_multi_label_flipping:
             client_i = Attacker_MultiLabelFlipping(i, model, trainData[i],
                 optimizer, criterion, device, args.inner_epochs, args.source_labels, args.target_label)
         elif i in args.list_uatk_flip_sign:
-            client_i = Attacker_Omniscient(i, model, trainData[i], optimizer,
+            client_i = Attacker_Guassian_Using_Coordinator(i, model, trainData[i], optimizer,
                 criterion, device, args.omniscient_scale, args.inner_epochs, isSignFlippingAttacker=True)
         elif i in args.list_uatk_add_noise:
             client_i = Attacker_AddNoise_Grad(i, model, trainData[i], optimizer,

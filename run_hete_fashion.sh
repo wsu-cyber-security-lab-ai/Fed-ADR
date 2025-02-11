@@ -15,7 +15,8 @@ LIST_UNRELIABLE=("2" "2,18" "2,18,20" "2,18,20,37" "2,18,20,37" "2,18,20,37")
 LIST_AN_ATTACKERS=("24" "24,25" "24,25,26" "24,25,26,27" "24,25,26,27,28" "24,25,26,27,28,30")
 
 # Targeted: Label-flipping attackers: increasing from 3 nodes to 8 nodes.
-LIST_LF_ATTACKERS=("17,29,6" "17,29,6,8" "17,29,6,8,23" "17,29,6,8,23,39" "17,29,6,8,23,39,31" "17,29,6,8,23,39,31,1")
+# LIST_LF_ATTACKERS=("17,29,6" "17,29,6,8" "17,29,6,8,23" "17,29,6,8,23,39" "17,29,6,8,23,39,31" "17,29,6,8,23,39,31,1")
+LIST_LF_ATTACKERS=("17,29,6" "17,29,6,8" "17,29,6,8,23" "17,29,6,8,23,39" "17,29,6,8,23,39,31" "29,6,8,23,39,31,1")
 
 # Targeted: Multi-labeli-flipping attackers: increasing from 3 nodes to 8 nodes.
 LIST_MLF_ATTACKERS=("17,29,6" "17,29,6,8" "17,29,6,8,23" "17,29,6,8,23,39" "17,29,6,8,23,39,31" "17,29,6,8,23,39,31,1")
@@ -38,11 +39,11 @@ DATASET="mnist"
 LR=1e-2 # SGD optimizer learning rate
 WD=1e-4  # weight-decay
 MOMENTUM=0.5 # SGD optimizer momentum
-GLOBAL_EPOCHS=40
+GLOBAL_EPOCHS=20
 LOCAL_EPOCHS=4
 STD_UR=30
 NUM_CLIENTS=40
-MINIMUM_ITERATION_TO_START_THE_ATTACK=5
+MINIMUM_ITERATION_TO_START_THE_ATTACK=3
 LOADER_TYPE=dirichlet
 
 # We train the FL model with SGD optimizer (learning
@@ -86,12 +87,13 @@ LOADER_TYPE=dirichlet
 
 # Series Exp4A (SF_AN_MLF): x1 unreliable clients, and j additive-noise (AN) attackers,
 # and (j+2) multi-label-flipping (MLF) attackers; where j in range [1,5].
-EXP_NAME="sExp4Ba_40ep5"
+EXP_NAME="sExp4Ba_40ep6"
 for ((i=0; i < 1; i++));
 do
 for ((j=5; j<6; j++));
 do
 STARTING_THRESHOLD=0
+# CUDA_VISIBLE_DEVICES=0 python main.py --dataset $DATASET --AR ${AR_METHOD[$i]} --loader_type $LOADER_TYPE --experiment_name ${EXP_NAME}_${DATASET}_${AR_METHOD[$i]}_40C_$((j+3))MLF --epochs $GLOBAL_EPOCHS --num_clients $NUM_CLIENTS --inner_epochs $LOCAL_EPOCHS --list_uatk_flip_sign ${LIST_SF_ATTACKERS[$j]} --list_tatk_label_flipping ${LIST_LF_ATTACKERS[$j]} --source_labels 1,2,3 --lr $LR --weight_decay $WD --momentum $MOMENTUM --verbose  --max_std_unreliable $STD_UR  --minimumIterationToStartTheAttack $MINIMUM_ITERATION_TO_START_THE_ATTACK 
 CUDA_VISIBLE_DEVICES=0 python main.py --dataset $DATASET --AR ${AR_METHOD[$i]} --loader_type $LOADER_TYPE --experiment_name ${EXP_NAME}_${DATASET}_${AR_METHOD[$i]}_40C_$((j+3))MLF --epochs $GLOBAL_EPOCHS --num_clients $NUM_CLIENTS --inner_epochs $LOCAL_EPOCHS --list_uatk_flip_sign ${LIST_SF_ATTACKERS[$j]} --source_labels 1,2,3 --lr $LR --weight_decay $WD --momentum $MOMENTUM --verbose  --max_std_unreliable $STD_UR  --minimumIterationToStartTheAttack $MINIMUM_ITERATION_TO_START_THE_ATTACK 
 
 # STARTING_THRESHOLD=1

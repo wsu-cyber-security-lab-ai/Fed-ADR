@@ -20,31 +20,37 @@ import numpy as np
 import time
 
 
-class SignFlibbingMaliciousCordinator():
-    signFlippingAttackerBeforeAttackGradient = {}
-    signFlippingAttackerAvgDelta = {}
-    signFlippingAttackerSumDelta = {}
-    signFlippingAttackerhogAvgLen = {}
-    normalClientDummyValue = {}
-    normalClientDummyAvgDelta = {}
-    normalClientDummySumDelta = {}
-    normalClientDummyhogAvgLen = {}
-    signFlippingAttackers = []
+class MaliciousCordinator():
+    attackerNodeBeforeAttackGradient = {}
+    attackerNodeAttackerType = {}
+    attackerNodeAvgDelta = {}
+    attackerNodeSumDelta = {}
+    attackerNodehogAvgLen = {}
+
+    normalNodeDummyValue = {}
+    normalNodeDummyAvgDelta = {}
+    normalNodeDummySumDelta = {}
+    normalNodeDummyhogAvgLen = {}
+
+    attackerNodes = []
     numberOfClientsTraining = 0
-    numberOfSignFlippingAttackers = 0
+    numberOfAttackerNodes = 0
     model = None
+
     minimumNumberOfMaliciousClientsThreshold = 2
     minimumIterationToStartTheAttack = 0
 
-    samplesThreshold = 20
+    samplesThreshold = 5
 
+    # MNIST uses default eps=0.5, min_sample=5
+    # CIFAR uses eps=50, min_sample=5 (based on heuristic evaluation Euclidean distance of grad of RestNet18.
     dbscan_eps = 0.5
     dbscan_min_samples = 5
 
-    signFlippingChoosenGradientInThisIteration = {}
-    signFlippingChoosenAvgDeltaInThisIteration = {}
-    signFlippingChoosenSumDeltaInThisIteration = {}
-    signFlippingChoosenhogAvgLenInThisIteration = {}
+    attackerNodeChoosenGradientInThisIteration = {}
+    attackerNodeChoosenAvgDeltaInThisIteration = {}
+    attackerNodeChoosenSumDeltaInThisIteration = {}
+    attackerNodeChoosenhogAvgLenInThisIteration = {}
     currentIteration = 0
 
     delay_decision = 2 # 2 consecutive rounds
@@ -56,11 +62,11 @@ class SignFlibbingMaliciousCordinator():
     flip_sign_ids = set()
     unreliable_ids = set()
 
-    def addMaliciousClientUpdate(client):
-        SignFlibbingMaliciousCordinator.signFlippingAttackers.append(client.cid)
-        SignFlibbingMaliciousCordinator.numberOfSignFlippingAttackers += 1
+    def addMaliciousClientUpdate(client, attackerType):
+        MaliciousCordinator.attackerNodes.append(client.cid)
+        MaliciousCordinator.numberOfAttackerNodes += 1
 
-        trainable_parameter = utils.getTrainableParameters(SignFlibbingMaliciousCordinator.model)
+        trainable_parameter = utils.getTrainableParameters(MaliciousCordinator.model)
 
         clientState = client.model.state_dict()
         clientAvgDelta = client.avg_delta
@@ -72,53 +78,68 @@ class SignFlibbingMaliciousCordinator():
                 continue
             clientStateChange[p] = clientState[p] - client.originalState[p]
 
-        SignFlibbingMaliciousCordinator.signFlippingAttackerBeforeAttackGradient[client.cid] = deepcopy(clientStateChange)
-        SignFlibbingMaliciousCordinator.signFlippingAttackerAvgDelta[client.cid] = deepcopy(clientAvgDelta)
-        SignFlibbingMaliciousCordinator.signFlippingAttackerSumDelta[client.cid] = deepcopy(clientSumDelta)
-        SignFlibbingMaliciousCordinator.signFlippingAttackerhogAvgLen[client.cid] = len(client.hog_avg)
+        MaliciousCordinator.attackerNodeBeforeAttackGradient[client.cid] = deepcopy(clientStateChange)
+        MaliciousCordinator.attackerNodeAvgDelta[client.cid] = deepcopy(clientAvgDelta)
+        MaliciousCordinator.attackerNodeSumDelta[client.cid] = deepcopy(clientSumDelta)
+        MaliciousCordinator.attackerNodehogAvgLen[client.cid] = len(client.hog_avg)
+        MaliciousCordinator.attackerNodeAttackerType[client.cid] = attackerType
 
+    def calculateNewMalicoiusAttack(client, attackerType):
         result = {
             "newMaliciousClient": None,
             "isNewMalicoiusClientCalculated": False,
         }
 
-        modelData = SignFlibbingMaliciousCordinator.model.state_dict()
+        trainable_parameter = utils.getTrainableParameters(MaliciousCordinator.model)
 
-        if  len(SignFlibbingMaliciousCordinator.signFlippingAttackerBeforeAttackGradient) == SignFlibbingMaliciousCordinator.numberOfSignFlippingAttackers and SignFlibbingMaliciousCordinator.currentIteration>=SignFlibbingMaliciousCordinator.minimumIterationToStartTheAttack and SignFlibbingMaliciousCordinator.numberOfSignFlippingAttackers>=SignFlibbingMaliciousCordinator.minimumNumberOfMaliciousClientsThreshold:
-        # if  SignFlibbingMaliciousCordinator.currentIteration % 3 != 0 and len(SignFlibbingMaliciousCordinator.signFlippingAttackerBeforeAttackGradient) == SignFlibbingMaliciousCordinator.numberOfSignFlippingAttackers and SignFlibbingMaliciousCordinator.currentIteration>=SignFlibbingMaliciousCordinator.minimumIterationToStartTheAttack and SignFlibbingMaliciousCordinator.numberOfSignFlippingAttackers>=SignFlibbingMaliciousCordinator.minimumNumberOfMaliciousClientsThreshold:
-            dict1 = dict(SignFlibbingMaliciousCordinator.signFlippingChoosenGradientInThisIteration)
-            dict2 = SignFlibbingMaliciousCordinator.signFlippingAttackerBeforeAttackGradient
+        modelData = MaliciousCordinator.model.state_dict()
+
+        if  len(MaliciousCordinator.attackerNodeBeforeAttackGradient) == MaliciousCordinator.numberOfAttackerNodes and MaliciousCordinator.currentIteration>=MaliciousCordinator.minimumIterationToStartTheAttack and MaliciousCordinator.numberOfAttackerNodes>=MaliciousCordinator.minimumNumberOfMaliciousClientsThreshold:
+        # if  MaliciousCordinator.currentIteration % 3 != 0 and len(MaliciousCordinator.attackerNodeBeforeAttackGradient) == MaliciousCordinator.numberOfAttackerNodes and MaliciousCordinator.currentIteration>=MaliciousCordinator.minimumIterationToStartTheAttack and MaliciousCordinator.numberOfAttackerNodes>=MaliciousCordinator.minimumNumberOfMaliciousClientsThreshold:
+            dict1 = dict(MaliciousCordinator.attackerNodeChoosenGradientInThisIteration)
+            dict2 = MaliciousCordinator.attackerNodeBeforeAttackGradient
             dict2.update({k: v for k, v in dict1.items() if k in dict2})
 
-            dict1 = dict(SignFlibbingMaliciousCordinator.signFlippingChoosenAvgDeltaInThisIteration)
-            dict2 = SignFlibbingMaliciousCordinator.signFlippingAttackerAvgDelta
+            dict1 = dict(MaliciousCordinator.attackerNodeChoosenAvgDeltaInThisIteration)
+            dict2 = MaliciousCordinator.attackerNodeAvgDelta
             dict2.update({k: v for k, v in dict1.items() if k in dict2})
 
-            dict1 = dict(SignFlibbingMaliciousCordinator.signFlippingChoosenSumDeltaInThisIteration)
-            dict2 = SignFlibbingMaliciousCordinator.signFlippingAttackerSumDelta
+            dict1 = dict(MaliciousCordinator.attackerNodeChoosenSumDeltaInThisIteration)
+            dict2 = MaliciousCordinator.attackerNodeSumDelta
             dict2.update({k: v for k, v in dict1.items() if k in dict2})
 
-            dict1 = dict(SignFlibbingMaliciousCordinator.signFlippingChoosenhogAvgLenInThisIteration)
-            dict2 = SignFlibbingMaliciousCordinator.signFlippingAttackerhogAvgLen
+            dict1 = dict(MaliciousCordinator.attackerNodeChoosenhogAvgLenInThisIteration)
+            dict2 = MaliciousCordinator.attackerNodehogAvgLen
             dict2.update({k: v for k, v in dict1.items() if k in dict2})
 
-            SignFlibbingMaliciousCordinator.normalClientDummyValue = {}
-            SignFlibbingMaliciousCordinator.normalClientDummyAvgDelta = {}
-            SignFlibbingMaliciousCordinator.normalClientDummySumDelta = {}
-            SignFlibbingMaliciousCordinator.normalClientDummyhogAvgLen = {}
+            MaliciousCordinator.normalNodeDummyValue = {}
+            MaliciousCordinator.normalNodeDummyAvgDelta = {}
+            MaliciousCordinator.normalNodeDummySumDelta = {}
+            MaliciousCordinator.normalNodeDummyhogAvgLen = {}
             
-            listOfMaliciousClientsIdsToChooseFrom = list(SignFlibbingMaliciousCordinator.signFlippingAttackerBeforeAttackGradient.keys())
+            listOfMaliciousClientsIdsToChooseFrom = list(MaliciousCordinator.attackerNodeBeforeAttackGradient.keys())
 
-            for i in range(SignFlibbingMaliciousCordinator.numberOfClientsTraining):
-                if i not in SignFlibbingMaliciousCordinator.signFlippingAttackers:
+            for i in range(MaliciousCordinator.numberOfClientsTraining):
+                if i not in MaliciousCordinator.attackerNodes:
                     selectedRandomMaliciousKey = random.sample(listOfMaliciousClientsIdsToChooseFrom, k=1)[0]
-                    SignFlibbingMaliciousCordinator.normalClientDummyValue[i] = (SignFlibbingMaliciousCordinator.signFlippingAttackerBeforeAttackGradient[selectedRandomMaliciousKey])
-                    SignFlibbingMaliciousCordinator.normalClientDummyAvgDelta[i] = (SignFlibbingMaliciousCordinator.signFlippingAttackerAvgDelta[selectedRandomMaliciousKey])
-                    SignFlibbingMaliciousCordinator.normalClientDummySumDelta[i] = (SignFlibbingMaliciousCordinator.signFlippingAttackerSumDelta[selectedRandomMaliciousKey])
-                    SignFlibbingMaliciousCordinator.normalClientDummyhogAvgLen[i] = (SignFlibbingMaliciousCordinator.signFlippingAttackerhogAvgLen[selectedRandomMaliciousKey])
+                    MaliciousCordinator.normalNodeDummyValue[i] = (MaliciousCordinator.attackerNodeBeforeAttackGradient[selectedRandomMaliciousKey])
+                    MaliciousCordinator.normalNodeDummyAvgDelta[i] = (MaliciousCordinator.attackerNodeAvgDelta[selectedRandomMaliciousKey])
+                    MaliciousCordinator.normalNodeDummySumDelta[i] = (MaliciousCordinator.attackerNodeSumDelta[selectedRandomMaliciousKey])
+                    MaliciousCordinator.normalNodeDummyhogAvgLen[i] = (MaliciousCordinator.attackerNodehogAvgLen[selectedRandomMaliciousKey])
 
             # TODO stable point 1
 
+            # STAGE 1: Collect long and short HoGs.
+            main_short_HoGs = {}
+            main_long_HoGs = {}
+            main_normalized_sHoGs = {}
+            main_full_norm_short_HoGs = []
+            keys = MaliciousCordinator.attackerNodeBeforeAttackGradient.keys()
+            key = list(keys)[MaliciousCordinator.numberOfAttackerNodes-1]
+
+            main_short_HoGs, main_long_HoGs, main_normalized_sHoGs, main_full_norm_short_HoGs = MaliciousCordinator.collect_short_long_hogs(newMaliciousClient)
+
+            # STAGE 2: Formalate the attack
             listOfParamters = {}
             listOfParamtersMean = {}
             listOfParamtersStandardDivation = {}
@@ -127,59 +148,45 @@ class SignFlibbingMaliciousCordinator():
             numHigh = {}
 
             newMaliciousClient = {}
-            listOfNewMaliciousClient = {}
-            listOfNumberOfClientMarkedAsMalicious = {}
-            listOfClientsMarkedAsMalicious = {}
-            listOfNewCoordinatorPossibleAttacks = {}
+            numberOfClientMarkedAsMalicious = 0
+            newCoordinatorPossibleAttacks = {}
 
-            for p in SignFlibbingMaliciousCordinator.model.state_dict():
-                if p not in trainable_parameter:
-                    continue
-                listOfParamters[p] = []
-                listOfParamtersMean[p] = []
-                listOfParamtersStandardDivation[p] = []
+            if MaliciousCordinator.attackerNodeAttackerType[key] == "guassian-attack":
+                for p in MaliciousCordinator.model.state_dict():
+                    if p not in trainable_parameter:
+                        continue
+                    listOfParamters[p] = []
+                    listOfParamtersMean[p] = []
+                    listOfParamtersStandardDivation[p] = []
 
-                for i in SignFlibbingMaliciousCordinator.signFlippingAttackerBeforeAttackGradient:
-                    malicoiusClient = (SignFlibbingMaliciousCordinator.signFlippingAttackerBeforeAttackGradient[i])
-                    listOfParamters[p].append(malicoiusClient[p])
+                    for i in MaliciousCordinator.attackerNodeBeforeAttackGradient:
+                        malicoiusClient = (MaliciousCordinator.attackerNodeBeforeAttackGradient[i])
+                        listOfParamters[p].append(malicoiusClient[p])
 
-                arr = np.array(listOfParamters[p])
-                listOfParamtersMean[p] = np.mean(arr, axis=0)
-                listOfParamtersStandardDivation[p] = np.std(arr, axis=0)
+                    arr = np.array(listOfParamters[p])
+                    listOfParamtersMean[p] = np.mean(arr, axis=0)
+                    listOfParamtersStandardDivation[p] = np.std(arr, axis=0)
 
-                A = np.array(modelData[p])
-                B = np.array(listOfParamtersMean[p])
+                    A = np.array(modelData[p])
+                    B = np.array(listOfParamtersMean[p])
 
-                if len(list(A.shape))==0:
-                    A = np.array([modelData[p]])
-                    B = np.array([listOfParamtersMean[p]])
+                    if len(list(A.shape))==0:
+                        A = np.array([modelData[p]])
+                        B = np.array([listOfParamtersMean[p]])
 
-                cosine = np.sum(A*B)/(norm(A)*norm(B))
+                    cosine = np.sum(A*B)/(norm(A)*norm(B))
 
-                flattened_cosine = cosine.flatten()
-                mean_flattened_cosine = flattened_cosine.mean()
+                    flattened_cosine = cosine.flatten()
+                    mean_flattened_cosine = flattened_cosine.mean()
 
-                numLow[p] = np.array(listOfParamtersMean[p]) - (4 * np.array(listOfParamtersStandardDivation[p]))
-                numHigh[p] = np.array(listOfParamtersMean[p]) - (3 * np.array(listOfParamtersStandardDivation[p]))
+                    numLow[p] = np.array(listOfParamtersMean[p]) - (4 * np.array(listOfParamtersStandardDivation[p]))
+                    numHigh[p] = np.array(listOfParamtersMean[p]) - (3 * np.array(listOfParamtersStandardDivation[p]))
 
-                if mean_flattened_cosine < 0:
-                    numLow[p] = np.array(listOfParamtersMean[p]) + (3 * np.array(listOfParamtersStandardDivation[p]))
-                    numHigh[p] = np.array(listOfParamtersMean[p]) + (4 * np.array(listOfParamtersStandardDivation[p]))
+                    if mean_flattened_cosine < 0:
+                        numLow[p] = np.array(listOfParamtersMean[p]) + (3 * np.array(listOfParamtersStandardDivation[p]))
+                        numHigh[p] = np.array(listOfParamtersMean[p]) + (4 * np.array(listOfParamtersStandardDivation[p]))
 
-            # STAGE 1: Collect long and short HoGs.
-            main_short_HoGs = {}
-            main_long_HoGs = {}
-            main_normalized_sHoGs = {}
-            main_full_norm_short_HoGs = []
-            keys = SignFlibbingMaliciousCordinator.signFlippingAttackerBeforeAttackGradient.keys()
-            key = list(keys)[SignFlibbingMaliciousCordinator.numberOfSignFlippingAttackers-1]
-
-            main_short_HoGs, main_long_HoGs, main_normalized_sHoGs, main_full_norm_short_HoGs = SignFlibbingMaliciousCordinator.collect_short_long_hogs(newMaliciousClient)
-
-            # STAGE 2: Formalate the attack
-
-            for t in range(SignFlibbingMaliciousCordinator.samplesThreshold):
-                for p in SignFlibbingMaliciousCordinator.model.state_dict():
+                for p in MaliciousCordinator.model.state_dict():
                     if p not in trainable_parameter:
                         continue
 
@@ -190,27 +197,22 @@ class SignFlibbingMaliciousCordinator():
                         rangeEnd = numHigh[p][index]
 
                         difference = rangeEnd - rangeStart
-                        step = difference / SignFlibbingMaliciousCordinator.samplesThreshold
+                        step = difference / MaliciousCordinator.samplesThreshold
 
                         if step !=0 and (not np.isnan(step)):
                             tempRange = np.arange(rangeStart, rangeEnd, step)
                             sampledRangeOfValues = list(tempRange)
                             flip = np.random.choice([-1, -1])
                             # random.shuffle(sampledRangeOfValues)
-                            new_value = sampledRangeOfValues[t] * flip
+                            # new_value = sampledRangeOfValues[t] * flip
+                            new_value = sampledRangeOfValues[MaliciousCordinator.samplesThreshold // 2] * flip
                             # new_value = value * flip
-                            # new_value = listOfParamters[p][len(SignFlibbingMaliciousCordinator.signFlippingAttackerBeforeAttackGradient)-1][index] * flip
+                            # new_value = listOfParamters[p][len(MaliciousCordinator.attackerNodeBeforeAttackGradient)-1][index] * flip
                             newSelectedSampledValues[index] = new_value
                         else:
                             newSelectedSampledValues[index] = value
 
                     newMaliciousClient[p] = torch.tensor(newSelectedSampledValues)
-
-                # print(newMaliciousClient.keys())
-                # print(len(newMaliciousClient))
-                # print(newMaliciousClient['conv1.weight'])
-                # print(t)
-                # print()
 
                 short_HoGs = deepcopy(main_short_HoGs)
                 long_HoGs = deepcopy(main_long_HoGs)
@@ -218,25 +220,25 @@ class SignFlibbingMaliciousCordinator():
                 full_norm_short_HoGs = deepcopy(main_full_norm_short_HoGs)
 
                 coordinatorNewAttacksLodge = {
-                    "pre_mal_id": deepcopy(SignFlibbingMaliciousCordinator.pre_mal_id),
-                    "mal_ids": deepcopy(SignFlibbingMaliciousCordinator.mal_ids),
-                    "count_unreliable": deepcopy(SignFlibbingMaliciousCordinator.count_unreliable),
-                    "delay_decision": deepcopy(SignFlibbingMaliciousCordinator.delay_decision),
-                    "flip_sign_ids": deepcopy(SignFlibbingMaliciousCordinator.flip_sign_ids),
-                    "uAtk_ids": deepcopy(SignFlibbingMaliciousCordinator.uAtk_ids),
-                    "tAtk_ids": deepcopy(SignFlibbingMaliciousCordinator.tAtk_ids), 
-                    "unreliable_ids": deepcopy(SignFlibbingMaliciousCordinator.unreliable_ids)
+                    "pre_mal_id": deepcopy(MaliciousCordinator.pre_mal_id),
+                    "mal_ids": deepcopy(MaliciousCordinator.mal_ids),
+                    "count_unreliable": deepcopy(MaliciousCordinator.count_unreliable),
+                    "delay_decision": deepcopy(MaliciousCordinator.delay_decision),
+                    "flip_sign_ids": deepcopy(MaliciousCordinator.flip_sign_ids),
+                    "uAtk_ids": deepcopy(MaliciousCordinator.uAtk_ids),
+                    "tAtk_ids": deepcopy(MaliciousCordinator.tAtk_ids), 
+                    "unreliable_ids": deepcopy(MaliciousCordinator.unreliable_ids)
                 }
 
                 avgDect1 = newMaliciousClient
-                avgDect2 = SignFlibbingMaliciousCordinator.signFlippingAttackerAvgDelta[key]
-                n = SignFlibbingMaliciousCordinator.signFlippingAttackerhogAvgLen[key]
+                avgDect2 = MaliciousCordinator.attackerNodeAvgDelta[key]
+                n = MaliciousCordinator.attackerNodehogAvgLen[key]
                 avgValue = OrderedDict({key: (((n* avgDect1[key]) + avgDect2[key]) / (n+1)) for key in avgDect1})
                 sHoG = torch.cat([v.flatten() for v in avgValue.values()]).detach().cpu().numpy()
                 short_HoGs[key] = sHoG
 
                 sumDect1 = newMaliciousClient
-                sumDect2 = SignFlibbingMaliciousCordinator.signFlippingAttackerSumDelta[key]
+                sumDect2 = MaliciousCordinator.attackerNodeSumDelta[key]
                 sumValue = OrderedDict({key: (sumDect1[key] + sumDect2[key]) for key in sumDect1})
                 long_HoGs[key] = torch.cat([v.flatten() for v in sumValue.values()]).detach().cpu().numpy()
 
@@ -248,58 +250,49 @@ class SignFlibbingMaliciousCordinator():
 
                 # STAGE 2 - step 1 : Divating the mud-hug sign flipping detection method
                 flip_sign_id = set()
-                flip_sign_id = SignFlibbingMaliciousCordinator.get_flipp_sign_attackers(short_HoGs, coordinatorNewAttacksLodge)
+                flip_sign_id = MaliciousCordinator.get_flipp_sign_attackers(short_HoGs, coordinatorNewAttacksLodge)
 
                 # STAGE 2 - step 2: Divating the mud-hug un targeted detection method
                 uAtk_id = set()
-                uAtk_id = SignFlibbingMaliciousCordinator.get_additive_noise_attackers(short_HoGs, flip_sign_id, coordinatorNewAttacksLodge)
+                uAtk_id = MaliciousCordinator.get_additive_noise_attackers(short_HoGs, flip_sign_id, coordinatorNewAttacksLodge)
 
                 # STAGE 2 - step 3: Divating the mud-hug targeted detection method
                 offset_tAtk_id1 = set()
                 if len(long_HoGs) > 1:
-                    offset_tAtk_id1 = SignFlibbingMaliciousCordinator.get_targetted_attackers(long_HoGs, flip_sign_id, uAtk_id, coordinatorNewAttacksLodge)
+                    offset_tAtk_id1 = MaliciousCordinator.get_targetted_attackers(long_HoGs, flip_sign_id, uAtk_id, coordinatorNewAttacksLodge)
 
 
-                SignFlibbingMaliciousCordinator.add_mal_id(flip_sign_id, uAtk_id, offset_tAtk_id1, coordinatorNewAttacksLodge)
+                MaliciousCordinator.add_mal_id(flip_sign_id, uAtk_id, offset_tAtk_id1, coordinatorNewAttacksLodge)
 
                 unrliable_clients = set()
-                unrliable_clients = SignFlibbingMaliciousCordinator.get_unreliable_clients(short_HoGs, flip_sign_id, uAtk_id, offset_tAtk_id1, coordinatorNewAttacksLodge)
+                unrliable_clients = MaliciousCordinator.get_unreliable_clients(short_HoGs, flip_sign_id, uAtk_id, offset_tAtk_id1, coordinatorNewAttacksLodge)
 
                 # STAGE 2 - step 4: Calcualte best score
-                listOfNumberOfClientMarkedAsMalicious[t] = SignFlibbingMaliciousCordinator.calculate_attacks_score(offset_tAtk_id1, uAtk_id, flip_sign_id, unrliable_clients, key, coordinatorNewAttacksLodge)
-                listOfNewMaliciousClient[t] = OrderedDict(newMaliciousClient)
-                listOfNewCoordinatorPossibleAttacks[t] = coordinatorNewAttacksLodge
+                numberOfClientMarkedAsMalicious = MaliciousCordinator.calculate_attacks_score(offset_tAtk_id1, uAtk_id, flip_sign_id, unrliable_clients, key, coordinatorNewAttacksLodge)
+                newMaliciousClient = OrderedDict(newMaliciousClient)
+                newCoordinatorPossibleAttacks = coordinatorNewAttacksLodge
 
-                # print(listOfNumberOfClientMarkedAsMalicious[t])
-                # print(t)
-                # print()
+            # items = list(listOfNumberOfClientMarkedAsMalicious.items())
+            # larget_value_index = 0
+            # for i in range(len(items)):
+            #     larget_value_index = i
+            #     for j in range(i + 1, len(items)):
+            #         if items[j][1] >= items[larget_value_index][1]:  # Compare values
+            #             larget_value_index = j
 
-            items = list(listOfNumberOfClientMarkedAsMalicious.items())
-            larget_value_index = 0
-            for i in range(len(items)):
-                larget_value_index = i
-                for j in range(i + 1, len(items)):
-                    if items[j][1] >= items[larget_value_index][1]:  # Compare values
-                        larget_value_index = j
-
-            # for i in listOfNumberOfClientMarkedAsMalicious:
-            #     print("threshold", i)
-            #     print("total detected", listOfNumberOfClientMarkedAsMalicious[i])
-            #     print()
-
-            result["newMaliciousClient"] = listOfNewMaliciousClient[larget_value_index]
+            result["newMaliciousClient"] = newMaliciousClient
             result["isNewMalicoiusClientCalculated"] = True
 
-            coordinatorNewAttacksLodge = listOfNewCoordinatorPossibleAttacks[larget_value_index]
+            coordinatorNewAttacksLodge = newCoordinatorPossibleAttacks
 
-            SignFlibbingMaliciousCordinator.pre_mal_id = coordinatorNewAttacksLodge["pre_mal_id"]
-            SignFlibbingMaliciousCordinator.mal_ids = coordinatorNewAttacksLodge["mal_ids"]
-            SignFlibbingMaliciousCordinator.count_unreliable = coordinatorNewAttacksLodge["count_unreliable"]
-            SignFlibbingMaliciousCordinator.delay_decision = coordinatorNewAttacksLodge["delay_decision"]
-            SignFlibbingMaliciousCordinator.flip_sign_ids = coordinatorNewAttacksLodge["flip_sign_ids"]
-            SignFlibbingMaliciousCordinator.uAtk_ids = coordinatorNewAttacksLodge["uAtk_ids"]
-            SignFlibbingMaliciousCordinator.tAtk_ids = coordinatorNewAttacksLodge["tAtk_ids"]
-            SignFlibbingMaliciousCordinator.unreliable_ids = coordinatorNewAttacksLodge["unreliable_ids"]
+            MaliciousCordinator.pre_mal_id = coordinatorNewAttacksLodge["pre_mal_id"]
+            MaliciousCordinator.mal_ids = coordinatorNewAttacksLodge["mal_ids"]
+            MaliciousCordinator.count_unreliable = coordinatorNewAttacksLodge["count_unreliable"]
+            MaliciousCordinator.delay_decision = coordinatorNewAttacksLodge["delay_decision"]
+            MaliciousCordinator.flip_sign_ids = coordinatorNewAttacksLodge["flip_sign_ids"]
+            MaliciousCordinator.uAtk_ids = coordinatorNewAttacksLodge["uAtk_ids"]
+            MaliciousCordinator.tAtk_ids = coordinatorNewAttacksLodge["tAtk_ids"]
+            MaliciousCordinator.unreliable_ids = coordinatorNewAttacksLodge["unreliable_ids"]
 
             # TODO stable point 2
         return result
@@ -315,7 +308,7 @@ class SignFlibbingMaliciousCordinator():
         tAtk_ids = coordinatorNewAttacksLodge["tAtk_ids"]
         unreliable_ids = coordinatorNewAttacksLodge["unreliable_ids"]
 
-        for i in range(SignFlibbingMaliciousCordinator.numberOfClientsTraining):
+        for i in range(MaliciousCordinator.numberOfClientsTraining):
             if i not in all_suspicious:
                 if pre_mal_id[i] == 0:
                     if i in mal_ids:
@@ -355,18 +348,18 @@ class SignFlibbingMaliciousCordinator():
         normalized_sHoGs = {}
         full_norm_short_HoGs = [] # for scan flip-sign each round
 
-        for k in range(SignFlibbingMaliciousCordinator.numberOfClientsTraining):
-            if k not in SignFlibbingMaliciousCordinator.signFlippingAttackers:
+        for k in range(MaliciousCordinator.numberOfClientsTraining):
+            if k not in MaliciousCordinator.attackerNodes:
                 # shortHoGs
-                avgDect1 = SignFlibbingMaliciousCordinator.normalClientDummyValue[k]
-                avgDect2 = SignFlibbingMaliciousCordinator.normalClientDummyAvgDelta[k]
-                n = SignFlibbingMaliciousCordinator.normalClientDummyhogAvgLen[k]
+                avgDect1 = MaliciousCordinator.normalNodeDummyValue[k]
+                avgDect2 = MaliciousCordinator.normalNodeDummyAvgDelta[k]
+                n = MaliciousCordinator.normalNodeDummyhogAvgLen[k]
                 avgValue = OrderedDict({key: (((n* avgDect1[key]) + avgDect2[key]) / (n+1)) for key in avgDect1})
                 sHoG = torch.cat([v.flatten() for v in avgValue.values()]).detach().cpu().numpy()
                 short_HoGs[k] = sHoG
                 # longHoGs
-                sumDect1 = SignFlibbingMaliciousCordinator.normalClientDummyValue[k]
-                sumDect2 = SignFlibbingMaliciousCordinator.normalClientDummySumDelta[k]
+                sumDect1 = MaliciousCordinator.normalNodeDummyValue[k]
+                sumDect2 = MaliciousCordinator.normalNodeDummySumDelta[k]
                 sumValue = OrderedDict({key: (sumDect1[key] + sumDect2[key]) for key in sumDect1})
                 long_HoGs[k] = torch.cat([v.flatten() for v in sumValue.values()]).detach().cpu().numpy()
 
@@ -375,18 +368,23 @@ class SignFlibbingMaliciousCordinator():
                 short_HoGs[k] = sHoG
 
                 # Exclude the firmed malicious clients
-                if k not in SignFlibbingMaliciousCordinator.mal_ids:
+                if k not in MaliciousCordinator.mal_ids:
                     normalized_sHoGs[k] = sHoG/L2_sHoG
 
         return short_HoGs, long_HoGs, normalized_sHoGs, full_norm_short_HoGs
 
     def get_flipp_sign_attackers(short_HoGs, coordinatorNewAttacksLodge):
+        # print(short_HoGs.keys())
+        # print(coordinatorNewAttacksLodge["mal_ids"])
         flip_sign_id = set()
         non_mal_sHoGs = dict(short_HoGs) # deep copy dict
         for i in coordinatorNewAttacksLodge["mal_ids"]:
             if i in non_mal_sHoGs:
                non_mal_sHoGs.pop(i)
+        # print(non_mal_sHoGs.keys())
+
         median_sHoG = np.median(np.array(list(non_mal_sHoGs.values())), axis=0)
+        # print("attack calcalated median for sign flipping", median_sHoG)
         for i, v in short_HoGs.items():
             v = np.array(list(v))
             if (np.linalg.norm(median_sHoG)*np.linalg.norm(v)) != 0:
@@ -397,19 +395,22 @@ class SignFlibbingMaliciousCordinator():
         return flip_sign_id
 
     def get_additive_noise_attackers(short_HoGs, flip_sign_id, coordinatorNewAttacksLodge):
-        for i in range(SignFlibbingMaliciousCordinator.numberOfClientsTraining):
+        for i in range(MaliciousCordinator.numberOfClientsTraining):
             if i in flip_sign_id or i in coordinatorNewAttacksLodge["flip_sign_ids"]:
                 if i in short_HoGs:
                     short_HoGs.pop(i)
         id_sHoGs, value_sHoGs = np.array(list(short_HoGs.keys())), np.array(list(short_HoGs.values()))
 
-        cluster_sh = DBSCAN(eps=SignFlibbingMaliciousCordinator.dbscan_eps, n_jobs=-1,
-            min_samples=SignFlibbingMaliciousCordinator.dbscan_min_samples).fit(value_sHoGs)
+        cluster_sh = DBSCAN(eps=MaliciousCordinator.dbscan_eps, n_jobs=-1,
+            min_samples=MaliciousCordinator.dbscan_min_samples).fit(value_sHoGs)
         
-        offset_normal_ids = SignFlibbingMaliciousCordinator.find_majority_id(cluster_sh)
+        offset_normal_ids = MaliciousCordinator.find_majority_id(cluster_sh)
         normal_ids = id_sHoGs[list(offset_normal_ids)]
         normal_sHoGs = value_sHoGs[list(offset_normal_ids)]
         normal_cent = np.median(normal_sHoGs, axis=0)
+
+        # print("attack calcalated median for untargetted", normal_cent)
+
         offset_uAtk_ids = np.where(cluster_sh.labels_ == -1)[0]
         sus_uAtk_ids = id_sHoGs[list(offset_uAtk_ids)]
 
@@ -418,7 +419,7 @@ class SignFlibbingMaliciousCordinator():
         for sid in suspicious_ids:
             d_normal_sus[sid] = np.linalg.norm(short_HoGs[sid]-normal_cent)
 
-        d_separate = SignFlibbingMaliciousCordinator.find_separate_point(list(d_normal_sus.values()))
+        d_separate = MaliciousCordinator.find_separate_point(list(d_normal_sus.values()))
         sus_tAtk_uRel_id0, uAtk_id = set(), set()
         for k, v in d_normal_sus.items():
             if v > d_separate and k in sus_uAtk_ids:
@@ -429,7 +430,7 @@ class SignFlibbingMaliciousCordinator():
         return uAtk_id
     
     def get_targetted_attackers(long_HoGs, flip_sign_id, uAtk_ids, coordinatorNewAttacksLodge):
-        for i in range(SignFlibbingMaliciousCordinator.numberOfClientsTraining):
+        for i in range(MaliciousCordinator.numberOfClientsTraining):
             if i in coordinatorNewAttacksLodge["flip_sign_ids"] or i in flip_sign_id:
                 if i in long_HoGs:
                     long_HoGs.pop(i)
@@ -440,13 +441,13 @@ class SignFlibbingMaliciousCordinator():
         value_lHoGs = np.array(list(long_HoGs.values()))
 
         cluster_lh1 = KMeans(n_clusters=2, random_state=0).fit(value_lHoGs)
-        offset_tAtk_id1 = SignFlibbingMaliciousCordinator.find_minority_id(cluster_lh1)
+        offset_tAtk_id1 = MaliciousCordinator.find_minority_id(cluster_lh1)
         # sus_tAtk_id = id_lHoGs[list(offset_tAtk_id1)]
         offset_tAtk_id1 = {int(x) for x in offset_tAtk_id1}
         return offset_tAtk_id1
 
     def get_unreliable_clients(short_HoGs, flip_sign_id, uAtk_ids, offset_tAtk_id1, coordinatorNewAttacksLodge):
-        for i in range(SignFlibbingMaliciousCordinator.numberOfClientsTraining):
+        for i in range(MaliciousCordinator.numberOfClientsTraining):
             if i in flip_sign_id or i in uAtk_ids or i in offset_tAtk_id1:
                 if i in short_HoGs:
                     short_HoGs.pop(i)
@@ -454,10 +455,11 @@ class SignFlibbingMaliciousCordinator():
         angle_sHoGs = {}
         # update this value again after excluding malicious clients
         median_sHoG = np.median(np.array(list(short_HoGs.values())), axis=0)
+        # print("attack calcalated median for unreliable", median_sHoG)
         for i, v in short_HoGs.items():
             angle_sHoGs[i] = np.dot(median_sHoG, v)/(np.linalg.norm(median_sHoG)*np.linalg.norm(v))
 
-        angle_sep_sH = SignFlibbingMaliciousCordinator.find_separate_point(list(angle_sHoGs.values()))
+        angle_sep_sH = MaliciousCordinator.find_separate_point(list(angle_sHoGs.values()))
         normal_id, uRel_id = set(), set()
         for k, v in angle_sHoGs.items():
             if v < angle_sep_sH: # larger angle, smaller cosine similarity
@@ -470,7 +472,7 @@ class SignFlibbingMaliciousCordinator():
         uAtk_ids = coordinatorNewAttacksLodge["uAtk_ids"]
         unreliable_ids = coordinatorNewAttacksLodge["unreliable_ids"]
 
-        for k in range(SignFlibbingMaliciousCordinator.numberOfClientsTraining):
+        for k in range(MaliciousCordinator.numberOfClientsTraining):
                 if k in uRel_id:
                     count_unreliable[k] += 1
                     if count_unreliable[k] > delay_decision:
@@ -528,21 +530,7 @@ class SignFlibbingMaliciousCordinator():
 
         union.discard(key)
         
-        #TODO add penality of known malicoius node
-
         score = len(union)
-
-        # if key in offset_tAtk_id1:
-        #     score-=1
-
-        # if key in uAtk_id:
-        #     score-=1
-    
-        # if key in flip_sign_id:
-        #     score-=1
-
-        # if key in unreliable_clients:
-        #     score-=1
 
         intersection.discard(key)
         inter1.discard(key)
@@ -628,7 +616,6 @@ class SignFlibbingMaliciousCordinator():
         atk_id = np.where(clf.labels_ == mal_label)[0]
         atk_id = set(atk_id.reshape((-1)))
         return atk_id
-    
     
     def find_majority_id(clf):
         counts = Counter(clf.labels_)

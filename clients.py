@@ -27,6 +27,7 @@ class Client():
         self.hog_avg = deque(maxlen=self.K_avg)
 
         self.isSignFlippingAttacker = False
+        self.isLabelFlippingAttacker = False
 
         #logging.info(f"Init client {cid} with size window avg grad={self.K_avg}")
 

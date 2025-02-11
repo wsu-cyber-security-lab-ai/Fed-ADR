@@ -23,7 +23,8 @@ from sklearn.metrics import RocCurveDisplay
 from sklearn.preprocessing import OneHotEncoder
 import math
 from clients import *
-from sign_flibbing_cordinator import *
+import statistics
+from malicious_cordinator import MaliciousCordinator
 
 def find_separate_point(d):
     # d should be flatten and np or list
@@ -163,8 +164,8 @@ class Server():
         self.dbscan_min_samples=5
 
         self.minimumIterationToStartTheAttack = minimumIterationToStartTheAttack
-        SignFlibbingMaliciousCordinator.minimumIterationToStartTheAttack = minimumIterationToStartTheAttack
-        SignFlibbingMaliciousCordinator.model = model
+        MaliciousCordinator.minimumIterationToStartTheAttack = minimumIterationToStartTheAttack
+        MaliciousCordinator.model = model
 
         coloredlogs.install()
         
@@ -302,26 +303,31 @@ class Server():
 
     def train(self, group):
         selectedClients = [self.clients[i] for i in group]
-        SignFlibbingMaliciousCordinator.signFlippingAttackerBeforeAttackGradient = {}
-        SignFlibbingMaliciousCordinator.signFlippingAttackerAvgDelta = {}
-        SignFlibbingMaliciousCordinator.signFlippingAttackerSumDelta = {}
-        SignFlibbingMaliciousCordinator.signFlippingAttackerhogAvgLen = {}
-        SignFlibbingMaliciousCordinator.normalClientDummyValue = {}
-        SignFlibbingMaliciousCordinator.normalClientDummyAvgDelta = {}
-        SignFlibbingMaliciousCordinator.normalClientDummySumDelta = {}
-        SignFlibbingMaliciousCordinator.normalClientDummyhogAvgLen = {}
-        SignFlibbingMaliciousCordinator.signFlippingAttackers = []
-        SignFlibbingMaliciousCordinator.numberOfSignFlippingAttackers = 0
-        SignFlibbingMaliciousCordinator.numberOfClientsTraining = len(selectedClients)
-        SignFlibbingMaliciousCordinator.currentIteration = self.iter
-        SignFlibbingMaliciousCordinator.signFlippingChoosenGradientInThisIteration = {}
-        SignFlibbingMaliciousCordinator.signFlippingChoosenAvgDeltaInThisIteration = {}
-        SignFlibbingMaliciousCordinator.signFlippingChoosenSumDeltaInThisIteration = {}
-        SignFlibbingMaliciousCordinator.signFlippingChoosenhogAvgLenInThisIteration = {}
+        MaliciousCordinator.attackerNodeBeforeAttackGradient = {}
+        MaliciousCordinator.attackerNodeAvgDelta = {}
+        MaliciousCordinator.attackerNodeSumDelta = {}
+        MaliciousCordinator.attackerNodehogAvgLen = {}
+        MaliciousCordinator.normalNodeDummyValue = {}
+        MaliciousCordinator.normalNodeDummyAvgDelta = {}
+        MaliciousCordinator.normalNodeDummySumDelta = {}
+        MaliciousCordinator.normalNodeDummyhogAvgLen = {}
+        MaliciousCordinator.attackerNodes = []
+        MaliciousCordinator.numberOfAttackerNodes = 0
+        MaliciousCordinator.numberOfClientsTraining = len(selectedClients)
+        MaliciousCordinator.currentIteration = self.iter
+        MaliciousCordinator.attackerNodeChoosenGradientInThisIteration = {}
+        MaliciousCordinator.attackerNodeChoosenAvgDeltaInThisIteration = {}
+        MaliciousCordinator.attackerNodeChoosenSumDeltaInThisIteration = {}
+        MaliciousCordinator.attackerNodeChoosenhogAvgLenInThisIteration = {}
+
+        # for index, c in enumerate(selectedClients):
+        #     c.train()
+        #     c.update()
 
         for index, c in enumerate(selectedClients):
-            start_time = time.time()
             c.train()
+
+        for index, c in enumerate(selectedClients):
             c.update()
             
         if self.isSaveChanges:
@@ -560,6 +566,7 @@ class Server():
             for i in self.mal_ids:
                 non_mal_sHoGs.pop(i)
             median_sHoG = np.median(np.array(list(non_mal_sHoGs.values())), axis=0)
+            # print("mud hug calcalated median for sign flipping", median_sHoG)
             for i, v in short_HoGs.items():
                 #logging.info(f"median_sHoG={median_sHoG}, v={v}")
                 v = np.array(list(v))
@@ -614,6 +621,8 @@ class Server():
             normal_sHoGs = value_sHoGs[list(offset_normal_ids)]
             normal_cent = np.median(normal_sHoGs, axis=0)
             logging.debug(f"offset_normal_ids={offset_normal_ids}, normal_ids={normal_ids}")
+
+            # print("mud hug calcalated median for untargetted", normal_cent)
 
             # suspicious ids of untargeted attacks and unreliable or targeted attacks.
             offset_uAtk_ids = np.where(cluster_sh.labels_ == -1)[0]
@@ -700,6 +709,8 @@ class Server():
             for i, v in short_HoGs.items():
                 angle_sHoGs[i] = np.dot(median_sHoG, v)/(np.linalg.norm(median_sHoG)*np.linalg.norm(v))
 
+            # print("mud hug calcalated median for unreliable", median_sHoG)
+
             angle_sep_sH = find_separate_point(list(angle_sHoGs.values()))
             normal_id, uRel_id = set(), set()
             for k, v in angle_sHoGs.items():
@@ -737,6 +748,7 @@ class Server():
         '''
         The aggregation rule views the update vectors as stacked vectors (1 by d by n).
         '''
+        print("clients participating in delta", [obj.cid for obj in clients])
         Delta = deepcopy(self.emptyStates)
         deltas = [c.getDelta() for c in clients]
         # size is relative to number of samples, actually it is number of batches
@@ -750,6 +762,8 @@ class Server():
         result = func(torch.stack(vecs, 1).unsqueeze(0))  # input as 1 by d by n
         result = result.view(-1)
         utils.vec2net(result, Delta)
+        # mean_values = {key: values.mean().item() for key, values in Delta.items()}
+        # print("delta", mean_values)
         return Delta
 
     def FedFuncWholeStateDict(self, clients, func):
