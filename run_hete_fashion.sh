@@ -9,7 +9,7 @@ LIST_UNRELIABLE=("2" "2,18" "2,18,20" "2,18,20,37" "2,18,20,37" "2,18,20,37")
 # LIST_SF_ATTACKERS=("0" "0,10" "0,10,11" "0,10,11,12" "0,10,11,12,13" "0,10,11,12,13" )
 # LIST_SF_ATTACKERS=("0" "0,10" "0,10,11" "0,10,11,12" "0,10,11,12,13" "0,10,11,12,13,14,15" )
 # LIST_SF_ATTACKERS=("0" "0,10" "0,10,11" "0,10,11,12" "0,10,11,12,13" "0,10,11,12,13,14,15,16,17,18" )
-LIST_SF_ATTACKERS=("0" "0,10" "0,10,11" "0,10,11,12" "0,10,11,12,13" "0,10,11,12,13,14,15,16,17,18,19,20,21,22,23" )
+# LIST_SF_ATTACKERS=("0" "0,10" "0,10,11" "0,10,11,12" "0,10,11,12,13" "0,10,11,12,13,14,15,16,17,18,19,20,21,22,23" )
 
 # Untargeted: Additive noise attackers, upto 6 node
 LIST_AN_ATTACKERS=("24" "24,25" "24,25,26" "24,25,26,27" "24,25,26,27,28" "24,25,26,27,28,30")
@@ -20,6 +20,20 @@ LIST_LF_ATTACKERS=("17,29,6" "17,29,6,8" "17,29,6,8,23" "17,29,6,8,23,39" "17,29
 # Targeted: Multi-labeli-flipping attackers: increasing from 3 nodes to 8 nodes.
 LIST_MLF_ATTACKERS=("17,29,6" "17,29,6,8" "17,29,6,8,23" "17,29,6,8,23,39" "17,29,6,8,23,39,31" "17,29,6,8,23,39,31,1")
 
+# LIST_SF_ATTACKERS=("0" "0,10" "0,10,11" "0,10,11,12" "0,10,11,12,13" "0,10,11,12,13,14,15,16,17,18,19,20,21,22,23" )
+# DATASET="mnist"
+# LR=1e-2 # SGD optimizer learning rate
+# WD=1e-4  # weight-decay
+# MOMENTUM=0.5 # SGD optimizer momentum
+# GLOBAL_EPOCHS=40
+# LOCAL_EPOCHS=4
+# STD_UR=30
+# NUM_CLIENTS=100
+# MINIMUM_ITERATION_TO_START_THE_ATTACK=15
+# LOADER_TYPE=dirichlet
+
+
+LIST_SF_ATTACKERS=("0" "0,10" "0,10,11" "0,10,11,12" "0,10,11,12,13" "0,10,11,12,13,14,15,16,17,18" )
 DATASET="mnist"
 LR=1e-2 # SGD optimizer learning rate
 WD=1e-4  # weight-decay
@@ -27,8 +41,8 @@ MOMENTUM=0.5 # SGD optimizer momentum
 GLOBAL_EPOCHS=40
 LOCAL_EPOCHS=4
 STD_UR=30
-NUM_CLIENTS=100
-MINIMUM_ITERATION_TO_START_THE_ATTACK=10
+NUM_CLIENTS=40
+MINIMUM_ITERATION_TO_START_THE_ATTACK=5
 LOADER_TYPE=dirichlet
 
 # We train the FL model with SGD optimizer (learning
@@ -72,7 +86,7 @@ LOADER_TYPE=dirichlet
 
 # Series Exp4A (SF_AN_MLF): x1 unreliable clients, and j additive-noise (AN) attackers,
 # and (j+2) multi-label-flipping (MLF) attackers; where j in range [1,5].
-EXP_NAME="sExp4Ba_40ep"
+EXP_NAME="sExp4Ba_40ep5"
 for ((i=0; i < 1; i++));
 do
 for ((j=5; j<6; j++));

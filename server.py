@@ -506,6 +506,7 @@ class Server():
         logging.info("FLIP-SIGN ATTACK={}".format(self.flip_sign_ids))
         logging.info("UNTARGETED ATTACK={}".format(self.uAtk_ids))
         logging.info("TARGETED ATTACK={}".format(self.tAtk_ids))
+        logging.info("mal_ids={}".format(self.mal_ids))
 
     def mud_hog(self, clients):
         # long_HoGs for clustering targeted and untargeted attackers
