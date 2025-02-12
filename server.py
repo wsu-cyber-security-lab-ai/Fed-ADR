@@ -167,6 +167,8 @@ class Server():
         MaliciousCordinator.minimumIterationToStartTheAttack = minimumIterationToStartTheAttack
         MaliciousCordinator.model = model
 
+        self.lastModelAccuracy = 0
+
         coloredlogs.install()
         
     def set_log_path(self, log_path, exp_name, t_run):
@@ -319,6 +321,9 @@ class Server():
         MaliciousCordinator.attackerNodeChoosenAvgDeltaInThisIteration = {}
         MaliciousCordinator.attackerNodeChoosenSumDeltaInThisIteration = {}
         MaliciousCordinator.attackerNodeChoosenhogAvgLenInThisIteration = {}
+        MaliciousCordinator.attackerNodeOfLabelFlipping = []
+        MaliciousCordinator.attackerNodeOfBackdoor = []
+        MaliciousCordinator.lastModelAccuracy = self.lastModelAccuracy
 
         # for index, c in enumerate(selectedClients):
         #     c.train()
@@ -748,7 +753,6 @@ class Server():
         '''
         The aggregation rule views the update vectors as stacked vectors (1 by d by n).
         '''
-        print("clients participating in delta", [obj.cid for obj in clients])
         Delta = deepcopy(self.emptyStates)
         deltas = [c.getDelta() for c in clients]
         # size is relative to number of samples, actually it is number of batches
@@ -762,6 +766,7 @@ class Server():
         result = func(torch.stack(vecs, 1).unsqueeze(0))  # input as 1 by d by n
         result = result.view(-1)
         utils.vec2net(result, Delta)
+        print("clients participating in delta", [obj.cid for obj in clients])
         # mean_values = {key: values.mean().item() for key, values in Delta.items()}
         # print("delta", mean_values)
         return Delta

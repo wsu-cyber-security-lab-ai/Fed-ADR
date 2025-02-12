@@ -252,10 +252,6 @@ class Attacker_Guassian_Using_Coordinator(Client):
             result = MaliciousCordinator.calculateNewMalicoiusAttack(self, "guassian-attack")
             isNewMalicoiusClientCalculated = result["isNewMalicoiusClientCalculated"]
             newMaliciousClient = result["newMaliciousClient"]
-            # print("isNewMalicoiusClientCalculated", isNewMalicoiusClientCalculated)
-            # print("cid", self.cid)
-            # print()
-                
         for p in self.originalState:
             self.stateChange[p] = newState[p] - self.originalState[p]
             if p not in trainable_parameter:
@@ -266,24 +262,6 @@ class Attacker_Guassian_Using_Coordinator(Client):
             if isNewMalicoiusClientCalculated == True:
                 self.stateChange[p] = newMaliciousClient[p]
 
-
-            # if isNewMalicoiusClientCalculated == True:
-            #     # Calculate the new average delta (old mean and the new state value averaged)
-            #     # Equivalent to: oldAvgDelta = (old_mean + new_value) / 2
-            #     oldAvgDelta = (self.avg_delta[p] + self.stateChange[p]) / 2  
-
-            #     # Determine the total number of values including the new one
-            #     # Equivalent to: lenOfAllData = n (number of data points)
-            #     lenOfAllData = (len(self.hog_avg) + 1)
-
-            #     # Adjust the newState[p] to ensure the desired new mean (newMaliciousClient[p])
-            #     # Using the derived formula: x_n' = (new_mean * n) - ((old_mean * n) - x_n)
-            #     newAdjustedState = (newMaliciousClient[p] * lenOfAllData) - ((oldAvgDelta * lenOfAllData) - self.stateChange[p])
-
-            #     # newState[p] = (newAdjustedState)
-            #     self.stateChange[p] = newAdjustedState
-
-            # self.stateChange[p] *= -(self.scale) # this is the point where sign flipping is made
             self.sum_hog[p] += self.stateChange[p]
             K_ = len(self.hog_avg)
             if K_ == 0:
@@ -301,10 +279,6 @@ class Attacker_Guassian_Using_Coordinator(Client):
             MaliciousCordinator.attackerNodeChoosenAvgDeltaInThisIteration[self.cid] = self.avg_delta
             MaliciousCordinator.attackerNodeChoosenSumDeltaInThisIteration[self.cid] = self.sum_hog
             MaliciousCordinator.attackerNodeChoosenhogAvgLenInThisIteration[self.cid] = len(self.hog_avg)
-
-        # print(MaliciousCordinator.currentIteration)
-        # print(MaliciousCordinator.signFlippingChoosenGradientInThisIteration.keys())
-        # print()
 
 class Attacker_LabelFlipping_Using_Coordinator(Client):
     def __init__(self, cid, model, dataLoader, optimizer, criterion=F.nll_loss,
@@ -334,35 +308,32 @@ class Attacker_LabelFlipping_Using_Coordinator(Client):
         if self.isLabelFlippingAttacker == True:
             MaliciousCordinator.addMaliciousClientUpdate(self, "label-flipping")
 
-    def update(self):
-        assert self.isTrained, 'nothing to update, call train() to obtain gradients'
-        newState = self.model.state_dict()
+class Attacker_Backdoor_Using_Coordinator(Client):
+    def __init__(self, cid, model, dataLoader, optimizer, criterion=F.nll_loss,
+            device='cpu', inner_epochs=1, isBackdoorAttacker=False):
+        super(Attacker_Backdoor_Using_Coordinator, self).__init__(cid, model, dataLoader,
+            optimizer, criterion, device, inner_epochs)
+        self.utils = Backdoor_Utils()
+        logging.info("init BACKDOOR ATTACK Client {}".format(cid))
+        self.isBackdoorAttacker = isBackdoorAttacker
 
-        # isNewMalicoiusClientCalculated = False
-        # newMaliciousClient = None
-        # if self.isLabelFlippingAttacker == True:
-        #     result = MaliciousCordinator.addMaliciousClientUpdate(self, "label-flipping")
-        #     isNewMalicoiusClientCalculated = result["isNewMalicoiusClientCalculated"]
-        #     newMaliciousClient = result["newMaliciousClient"]
+    def train(self):
+        self.model.to(self.device)
+        self.model.train()
+        for epoch in range(self.inner_epochs):
+            for batch_idx, (data, target) in enumerate(self.dataLoader):
+                data, target = self.data_transform(data, target)
+                data, target = data.to(self.device), target.to(self.device)
+                self.optimizer.zero_grad()
+                output = self.model(data)
+                loss = self.criterion(output, target)
+                loss.backward()
+                self.optimizer.step()
+        self.isTrained = True
+        self.model.cpu()  ## avoid occupying gpu when idle
 
-        for p in self.originalState:
-            self.stateChange[p] = newState[p] - self.originalState[p]
-            self.sum_hog[p] += self.stateChange[p]
-            K_ = len(self.hog_avg)
-            if K_ == 0:
-                self.avg_delta[p] = self.stateChange[p]
-            elif K_ < self.K_avg:
-                self.avg_delta[p] = (self.avg_delta[p]*K_ + self.stateChange[p])/(K_+1)
-            else:
-                self.avg_delta[p] += (self.stateChange[p] - self.hog_avg[0][p])/self.K_avg
-        self.hog_avg.append(self.stateChange)
-        self.isTrained = False
-
-        # if isNewMalicoiusClientCalculated == True:
-        #     MaliciousCordinator.attackerNodeChoosenGradientInThisIteration[self.cid] = self.stateChange
-        #     MaliciousCordinator.attackerNodeChoosenAvgDeltaInThisIteration[self.cid] = self.avg_delta
-        #     MaliciousCordinator.attackerNodeChoosenSumDeltaInThisIteration[self.cid] = self.sum_hog
-        #     MaliciousCordinator.attackerNodeChoosenhogAvgLenInThisIteration[self.cid] = len(self.hog_avg)
+        if self.isBackdoorAttacker == True:
+            MaliciousCordinator.addMaliciousClientUpdate(self, "back-door")
 
 class Attacker_AddNoise_Grad(Client):
     def __init__(self, cid, model, dataLoader, optimizer, criterion=F.nll_loss,

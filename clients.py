@@ -28,6 +28,7 @@ class Client():
 
         self.isSignFlippingAttacker = False
         self.isLabelFlippingAttacker = False
+        self.isBackdoorAttacker = False
 
         #logging.info(f"Init client {cid} with size window avg grad={self.K_avg}")
 

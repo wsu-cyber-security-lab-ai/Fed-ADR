@@ -164,8 +164,8 @@ def main(args):
             client_i = Attacker_Omniscient(i, model, trainData[i], optimizer,
                 criterion, device, args.omniscient_scale, args.inner_epochs)
         elif i in attacker_list_backdoor or i in args.list_tatk_backdoor:
-            client_i = Attacker_Backdoor(i, model, trainData[i], optimizer,
-                criterion, device, args.inner_epochs)
+            client_i = Attacker_Backdoor_Using_Coordinator(i, model, trainData[i], optimizer,
+                criterion, device, args.inner_epochs, isBackdoorAttacker=True)
 
             if 'RANDOM' in args.attacks.upper():
                 client_i.utils.setRandomTrigger(seed=args.attacks)
@@ -209,6 +209,7 @@ def main(args):
     server.set_log_path(log_dir, args.experiment_name, start_time)
 
     loss, accuracy = server.test()
+    server.lastModelAccuracy = accuracy
     steps = 0
     writer.add_scalar('test/loss', loss, steps)
     writer.add_scalar('test/accuracy', accuracy, steps)
@@ -234,6 +235,7 @@ def main(args):
         #         server.train_concurrent(group)
 
         loss, accuracy = server.test()
+        server.lastModelAccuracy = accuracy
 
         writer.add_scalar('test/loss', loss, steps)
         writer.add_scalar('test/accuracy', accuracy, steps)
