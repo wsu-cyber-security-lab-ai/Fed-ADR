@@ -12,6 +12,7 @@ from utils.blur_images import GaussianSmoothing
 import random
 import statistics
 from malicious_cordinator import MaliciousCordinator
+from attack_types import AttackTypes
 
 class Unreliable_client(Client):
     def __init__(self, cid, model, dataLoader, optimizer, criterion=F.nll_loss,
@@ -248,8 +249,8 @@ class Attacker_Guassian_Using_Coordinator(Client):
         isNewMalicoiusClientCalculated = False
         newMaliciousClient = None
         if self.isSignFlippingAttacker == True:
-            MaliciousCordinator.addMaliciousClientUpdate(self, "guassian-attack")
-            result = MaliciousCordinator.calculateNewMalicoiusAttack(self, "guassian-attack")
+            MaliciousCordinator.addMaliciousClientUpdate(self, AttackTypes.GuassianAttack)
+            result = MaliciousCordinator.calculateNewMalicoiusAttack(self, AttackTypes.GuassianAttack)
             isNewMalicoiusClientCalculated = result["isNewMalicoiusClientCalculated"]
             newMaliciousClient = result["newMaliciousClient"]
         for p in self.originalState:
@@ -306,7 +307,35 @@ class Attacker_LabelFlipping_Using_Coordinator(Client):
         self.model.cpu()  ## avoid occupying gpu when idle
 
         if self.isLabelFlippingAttacker == True:
-            MaliciousCordinator.addMaliciousClientUpdate(self, "label-flipping")
+            MaliciousCordinator.addMaliciousClientUpdate(self, AttackTypes.LabelFlipping)
+
+class Attacker_MultiLabelFlipping_Using_Coordinator(Client):
+    def __init__(self, cid, model, dataLoader, optimizer, criterion=F.nll_loss,
+            device='cpu', inner_epochs=1, source_labels=[1,2,3], target_label=7, isMultiLabelFlippingAttacker=False):
+        logging.info(f"init ATTACK MULTI-LABEL-FLIPPING, change label {source_labels} to {target_label} Client {cid}")
+        super(Attacker_MultiLabelFlipping_Using_Coordinator, self).__init__(cid, model,
+            dataLoader, optimizer, criterion, device, inner_epochs)
+        self.source_labels = source_labels
+        self.target_label = target_label
+        self.isMultiLabelFlippingAttacker = isMultiLabelFlippingAttacker
+
+    def train(self):
+        self.model.to(self.device)
+        self.model.train()
+        for epoch in range(self.inner_epochs):
+            for batch_idx, (data, target) in enumerate(self.dataLoader):
+                data, target = self.data_transform(data, target)
+                data, target = data.to(self.device), target.to(self.device)
+                self.optimizer.zero_grad()
+                output = self.model(data)
+                loss = self.criterion(output, target)
+                loss.backward()
+                self.optimizer.step()
+        self.isTrained = True
+        self.model.cpu()  ## avoid occupying gpu when idle
+
+        if self.isMultiLabelFlippingAttacker == True:
+            MaliciousCordinator.addMaliciousClientUpdate(self, AttackTypes.MultiLabelFlipping)
 
 class Attacker_Backdoor_Using_Coordinator(Client):
     def __init__(self, cid, model, dataLoader, optimizer, criterion=F.nll_loss,
@@ -333,7 +362,7 @@ class Attacker_Backdoor_Using_Coordinator(Client):
         self.model.cpu()  ## avoid occupying gpu when idle
 
         if self.isBackdoorAttacker == True:
-            MaliciousCordinator.addMaliciousClientUpdate(self, "back-door")
+            MaliciousCordinator.addMaliciousClientUpdate(self, AttackTypes.BackDoor)
 
 class Attacker_AddNoise_Grad(Client):
     def __init__(self, cid, model, dataLoader, optimizer, criterion=F.nll_loss,

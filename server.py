@@ -323,6 +323,7 @@ class Server():
         MaliciousCordinator.attackerNodeChoosenhogAvgLenInThisIteration = {}
         MaliciousCordinator.attackerNodeOfLabelFlipping = []
         MaliciousCordinator.attackerNodeOfBackdoor = []
+        MaliciousCordinator.attackerNodeOfMultiLabelFlipping = []
         MaliciousCordinator.lastModelAccuracy = self.lastModelAccuracy
 
         # for index, c in enumerate(selectedClients):

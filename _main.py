@@ -183,8 +183,8 @@ def main(args):
             client_i = Attacker_LabelFlipping_Using_Coordinator(i, model, trainData[i],
                 optimizer, criterion, device, args.inner_epochs, args.source_labels[0], args.target_label, isLabelFlippingAttacker=True)
         elif i in args.list_tatk_multi_label_flipping:
-            client_i = Attacker_MultiLabelFlipping(i, model, trainData[i],
-                optimizer, criterion, device, args.inner_epochs, args.source_labels, args.target_label)
+            client_i = Attacker_MultiLabelFlipping_Using_Coordinator(i, model, trainData[i],
+                optimizer, criterion, device, args.inner_epochs, args.source_labels, args.target_label, isMultiLabelFlippingAttacker=True)
         elif i in args.list_uatk_flip_sign:
             client_i = Attacker_Guassian_Using_Coordinator(i, model, trainData[i], optimizer,
                 criterion, device, args.omniscient_scale, args.inner_epochs, isSignFlippingAttacker=True)

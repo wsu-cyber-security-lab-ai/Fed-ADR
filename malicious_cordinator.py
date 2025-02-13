@@ -18,7 +18,7 @@ from sklearn.cluster import KMeans, DBSCAN
 import numpy as np
 
 import time
-
+from attack_types import AttackTypes
 
 class MaliciousCordinator():
     attackerNodeBeforeAttackGradient = {}
@@ -29,6 +29,7 @@ class MaliciousCordinator():
 
     attackerNodeOfLabelFlipping = []
     attackerNodeOfBackdoor = []
+    attackerNodeOfMultiLabelFlipping = []
 
     normalNodeDummyValue = {}
     normalNodeDummyAvgDelta = {}
@@ -89,11 +90,16 @@ class MaliciousCordinator():
         MaliciousCordinator.attackerNodehogAvgLen[client.cid] = len(client.hog_avg)
         MaliciousCordinator.attackerNodeAttackerType[client.cid] = attackerType
 
-        if attackerType =="label-flipping":
+        # print(attackerType)
+
+        if attackerType == AttackTypes.LabelFlipping:
             MaliciousCordinator.attackerNodeOfLabelFlipping.append(client.cid)
 
-        if attackerType =="back-door":
+        if attackerType == AttackTypes.BackDoor:
             MaliciousCordinator.attackerNodeOfBackdoor.append(client.cid)
+
+        if attackerType == AttackTypes.MultiLabelFlipping:
+            MaliciousCordinator.attackerNodeOfMultiLabelFlipping.append(client.cid)
 
     def calculateNewMalicoiusAttack(client, attackerType):
         result = {
@@ -154,9 +160,7 @@ class MaliciousCordinator():
             scoreOfNodesMarkedAsMalicious = 0
             newCoordinatorPossibleAttacks = {}
 
-            if attackerType == "guassian-attack":
-                # print("guassian-attack")
-
+            if attackerType == AttackTypes.GuassianAttack:
                 numLow = {}
                 numHigh = {}
 
@@ -588,7 +592,7 @@ class MaliciousCordinator():
         unique_set3 = flip_sign_ids - (tAtk_ids | uAtk_ids | unreliable_ids)
         unique_set4 = unreliable_ids - (flip_sign_ids | tAtk_ids | uAtk_ids)
 
-        keysToDiscard = set(MaliciousCordinator.attackerNodeOfLabelFlipping) | set(MaliciousCordinator.attackerNodeOfBackdoor) | {key}
+        keysToDiscard = set(MaliciousCordinator.attackerNodeOfLabelFlipping) | set(MaliciousCordinator.attackerNodeOfBackdoor) | set(MaliciousCordinator.attackerNodeOfMultiLabelFlipping) | {key}
 
         union.difference_update(keysToDiscard)
         
@@ -641,6 +645,7 @@ class MaliciousCordinator():
         # if key in coordinatorNewAttacksLodge["unreliable_ids"]:
         #     score-=4
 
+        # print("multi label flipping", MaliciousCordinator.attackerNodeOfMultiLabelFlipping)
         # print("label flipping", MaliciousCordinator.attackerNodeOfLabelFlipping)
         # print("back door", MaliciousCordinator.attackerNodeOfBackdoor)
         # print("pre_mal_id", coordinatorNewAttacksLodge["pre_mal_id"])
