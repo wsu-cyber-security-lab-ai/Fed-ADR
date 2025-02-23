@@ -133,7 +133,8 @@ def main(args):
 
     if args.save_model_weights:
         server.isSaveChanges = True
-        server.savePath = f'./AggData/{args.loader_type}/{args.dataset}/{args.attacks}/{args.AR}'
+        # server.savePath = f'./AggData/{args.loader_type}/{args.dataset}/{args.attacks}/{args.AR}'
+        server.savePath = f'./AggData/{args.loader_type}/{args.dataset}/{args.experiment_name}/{args.AR}'
         from pathlib import Path
         Path(server.savePath).mkdir(parents=True, exist_ok=True)
         torch.save(label, f'{server.savePath}/label.pt')

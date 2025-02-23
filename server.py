@@ -335,9 +335,9 @@ class Server():
 
         for index, c in enumerate(selectedClients):
             c.update()
-            
+
         if self.isSaveChanges:
-            self.saveChanges(selectedClients)
+            self.saveChanges(selectedClients, "trained_clients_before_aggregation")
 
         tic = time.perf_counter()
         Delta = self.AR(selectedClients)
@@ -346,12 +346,27 @@ class Server():
 
         for param in self.model.state_dict():
             self.model.state_dict()[param] += Delta[param]
-        self.iter += 1
 
-    def saveChanges(self, clients):
+        self.saveModel("aggregated_model")
+        self.iter += 1
+    
+    def saveLabels(self, clients, prefix):
+        savepath = f'{self.savePath}/{prefix}_labels_{self.iter}.pt'
+        labels = torch.ones(len(clients))
+        for index, client in enumerate(clients):
+            labels[index] = client.cid
+        torch.save(labels, savepath)
+
+    def saveModel(self, prefix):
+        savepath = f'{self.savePath}/{prefix}_{self.iter}.pth'
+        torch.save(self.model.state_dict(), savepath)
+
+    def saveChanges(self, clients, prefix):
 
         Delta = deepcopy(self.emptyStates)
         deltas = [c.getDelta() for c in clients]
+
+        self.saveLabels(clients, prefix)
 
         param_trainable = utils.getTrainableParameters(self.model)
 
@@ -364,6 +379,12 @@ class Server():
             param_stack = torch.stack([delta[param] for delta in deltas], -1)
             shaped = param_stack.view(-1, len(clients))
             Delta[param] = shaped
+            # print("deltas[0]", deltas[0][param])
+            # print(len(deltas[0]))
+            # print(param)
+            # print("shaped", shaped)
+            # print(len(shaped))
+            # print()
 
         saveAsPCA = False # True
         saveOriginal = True #False
@@ -375,9 +396,9 @@ class Server():
             logging.info(f'[Server] The PCA projections of the update vectors have been saved to {savepath} (with shape {proj_vec.shape})')
 #             return
         if saveOriginal:
-            savepath = f'{self.savePath}/{self.iter}.pt'
+            savepath = f'{self.savePath}/{prefix}_values_{self.iter}.pt'
 
-            torch.save(Delta, savepath)
+            torch.save(deltas, savepath)
             logging.info(f'[Server] Update vectors have been saved to {savepath}')
 
     def set_AR_param(self, dbscan_eps=0.5, min_samples=5):
@@ -747,6 +768,10 @@ class Server():
             self.normal_clients = normal_clients
         else:
             normal_clients = clients
+
+        if self.isSaveChanges:
+            self.saveChanges(normal_clients, "selected_clients_before_aggregation")
+
         out = self.FedFuncWholeNet(normal_clients, lambda arr: torch.mean(arr, dim=-1, keepdim=True))
         return out
 
