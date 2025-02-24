@@ -3,30 +3,30 @@ from utils import utils
 import logging, coloredlogs
 import numpy as np
 import torch.nn.functional as F
+from tensorboardX import SummaryWriter
 
-def load_initial_labels(path):
-    labels = torch.load(path + '/label.pt')
-    # print(labels)
-    return labels
+def load_data_from_file(path, prefix):
+    data = torch.load(path + '/'+prefix+'.pt')
+    return data
+
+def load_testing_results_from_file(path, iteration):
+    testingData = torch.load(path + '/testing_results_' + str(iteration) + '.pt', map_location="cpu", weights_only=False)
+    return testingData
 
 def load_labels_trained_on_iteration(path, iteration):
     labels = torch.load(path + '/trained_clients_before_aggregation_labels_' + str(iteration) + '.pt')
-    # print(labels)
     return labels
 
 def load_labels_selected_on_iteration(path, iteration):
     labels = torch.load(path + '/selected_clients_before_aggregation_labels_' + str(iteration) + '.pt')
-    # print(labels)
     return labels
 
 def load_clients_deltas_trained_on_iteration(path, iteration):
     deltas_recovered = torch.load(path + '/trained_clients_before_aggregation_values_' + str(iteration) + '.pt')
-    # print(deltas_recovered[0]["fc3.bias"])
     return deltas_recovered
 
 def load_clients_deltas_selected_on_iteration(path, iteration):
     deltas_recovered = torch.load(path + '/selected_clients_before_aggregation_values_' + str(iteration) + '.pt')
-    # print(deltas_recovered[0]["fc3.bias"])
     return deltas_recovered
 
 def load_aggregated_model_on_iteration(path, dataset, iteration, device, model):
@@ -72,6 +72,8 @@ def load_dataset_info(dataset, num_clients, loader_type, loader_path, test_batch
         testData = fashion_mnist.test_dataloader(test_batch_size)
         Net = fashion_mnist.Net
         criterion = F.cross_entropy
+
+    print()
 
     model = Net()
     return model, trainData, testData, criterion
@@ -122,14 +124,51 @@ def test(model, iteration, dataLoader, criterion):
 
     return test_loss, accuracy
 
+def loadInitialInfo(path):
+    labels = load_data_from_file(path, "label")
+    list_uatk_flip_sign = load_data_from_file(path, "list_uatk_flip_sign")
+    list_uatk_add_noise = load_data_from_file(path, "list_uatk_add_noise")
+    list_tatk_label_flipping = load_data_from_file(path, "list_tatk_label_flipping")
+    list_tatk_multi_label_flipping = load_data_from_file(path, "list_tatk_multi_label_flipping")
+    print("labels", labels)
+    print("list_uatk_flip_sign", list_uatk_flip_sign)
+    print("list_uatk_add_noise", list_uatk_add_noise)
+    print("list_tatk_label_flipping", list_tatk_label_flipping)
+    print("list_tatk_multi_label_flipping", list_tatk_multi_label_flipping)
+    print()
+
+    return labels, list_uatk_flip_sign, list_uatk_add_noise, list_tatk_label_flipping, list_tatk_multi_label_flipping
+
+def loadIterationData(path, iteration, dataset, device, model):
+    selected_clients_labels = load_labels_selected_on_iteration(path, iteration)
+    selected_clients = load_clients_deltas_selected_on_iteration(path, iteration)
+
+    trained_clients_labels = load_labels_trained_on_iteration(path, iteration)
+    trained_clients = load_clients_deltas_trained_on_iteration(path, iteration)
+
+    aggregated_model = load_aggregated_model_on_iteration(path, dataset, iteration, device, model)
+
+    testingData = load_testing_results_from_file(path, iteration)
+
+    print("Iteration", iteration)
+    print("selected_clients_labels", selected_clients_labels)
+    # print("selected_clients", selected_clients)
+    # print("trained_clients_labels", trained_clients_labels)
+    # print("trained_clients", trained_clients)
+    # print("aggregated_model", aggregated_model)
+    print("testingData", {"accuracy": testingData['accuracy']})
+    print()
+
+    return testingData, selected_clients_labels
+
 local_folder = "AggData"
-experiment = 'Exp_100C_40ep_15start_5_mnist_mudhog_40C_8MLF'
+experiment = 'Exp_100C_40ep_15start_5_#__mnist_mudhog_40C_8MLF'
 dataset = "mnist"
 loader_type = "dirichlet"
 aggregation_method = "mudhog"
 num_clients = 40
 device = torch.device("cuda")
-iteration = 3
+num_of_iterations = 20
 loader_path = "./data/loader.pk"
 test_batch_size = 64
 
@@ -137,16 +176,52 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 
 path = f"./{local_folder}/{loader_type}/{dataset}/{experiment}/{aggregation_method}"
 
-load_initial_labels(path)
-
-selected_clients_labels = load_labels_selected_on_iteration(path, iteration)
-selected_clients = load_clients_deltas_selected_on_iteration(path, iteration)
-
-trained_clients_labels = load_labels_trained_on_iteration(path, iteration)
-trained_clients = load_clients_deltas_trained_on_iteration(path, iteration)
+labels, list_uatk_flip_sign, list_uatk_add_noise, list_tatk_label_flipping, list_tatk_multi_label_flipping = loadInitialInfo(path)
 
 model, trainData, testData, criterion = load_dataset_info(dataset, num_clients, loader_type, loader_path, test_batch_size)
 
-aggregated_model = load_aggregated_model_on_iteration(path, dataset, iteration, device, model)
 
-test(model, iteration, testData, criterion)
+writer = SummaryWriter(f'./results_logs/{loader_type}/{dataset}/{experiment}/{aggregation_method}')
+
+for iteration in range(num_of_iterations):
+    testingData, selected_clients_labels = loadIterationData(path, iteration, dataset, device, model)
+
+    num_of_malicious_marked_as_bengin = 0
+    num_of_bengin_marked_as_malicious = 0
+    num_of_malicoius_marked_as_malicious = 0
+
+    for i in range(num_clients):
+        if i not in list_uatk_flip_sign or i not in list_uatk_add_noise or i not in list_tatk_label_flipping or i not in list_tatk_multi_label_flipping and i not in selected_clients_labels:
+            num_of_bengin_marked_as_malicious+1
+
+    for s in (set(list_uatk_flip_sign) | set(list_uatk_add_noise) | set(list_tatk_label_flipping) | set(list_tatk_multi_label_flipping)):
+        selected_clients_labels_int = [int(x) for x in selected_clients_labels]
+        if s in selected_clients_labels_int:
+            num_of_malicious_marked_as_bengin+=1
+        else:
+            num_of_malicoius_marked_as_malicious+=1
+
+
+    # print(len(selected_clients_labels))
+    # print(len(list_uatk_flip_sign))
+    # print(len(list_uatk_add_noise))
+    # print(len(list_tatk_label_flipping))
+    # print(len(list_tatk_multi_label_flipping))
+    # print(num_of_bengin_marked_as_malicious)
+    # print(num_of_malicious_marked_as_bengin)
+    # print(num_of_malicoius_marked_as_malicious)
+    # print()
+
+    loss = testingData["test_loss"]
+    accuracy = testingData["accuracy"]
+
+    writer.add_scalar('test/loss', loss, iteration)
+    writer.add_scalar('test/accuracy', accuracy, iteration)
+    writer.add_scalar('test/num_of_bengin_marked_as_malicious', num_of_bengin_marked_as_malicious, iteration)
+    writer.add_scalar('test/num_of_malicious_marked_as_bengin', num_of_malicious_marked_as_bengin, iteration)
+    writer.add_scalar('test/num_of_malicoius_marked_as_malicious', num_of_malicoius_marked_as_malicious, iteration)
+
+writer.close()
+
+
+# test(model, iteration, testData, criterion)

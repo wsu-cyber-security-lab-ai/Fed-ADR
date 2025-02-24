@@ -138,6 +138,10 @@ def main(args):
         from pathlib import Path
         Path(server.savePath).mkdir(parents=True, exist_ok=True)
         torch.save(label, f'{server.savePath}/label.pt')
+        torch.save(args.list_uatk_flip_sign, f'{server.savePath}/list_uatk_flip_sign.pt')
+        torch.save(args.list_uatk_add_noise, f'{server.savePath}/list_uatk_add_noise.pt')
+        torch.save(args.list_tatk_label_flipping, f'{server.savePath}/list_tatk_label_flipping.pt')
+        torch.save(args.list_tatk_multi_label_flipping, f'{server.savePath}/list_tatk_multi_label_flipping.pt')
     # create clients instance
 
     attacker_list_labelFlipping = args.attacker_list_labelFlipping

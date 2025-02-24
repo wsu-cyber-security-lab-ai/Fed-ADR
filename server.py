@@ -248,6 +248,17 @@ class Server():
         self.output_file.flush()
         logging.info(f"[Server] Precision={precision},\n Recall={recall},\n F1-score={f1},\n my_accuracy={m_acc*100.}[%]")
 
+        if self.isSaveChanges:
+            testingData = {
+                "test_loss": test_loss,
+                "accuracy": accuracy,
+                "precision": precision,
+                "recall": recall,
+                "f1": f1,
+                "cf_matrix": cf_matrix,
+            }
+            self.saveTestingResults(testingData)
+
         return test_loss, accuracy
 
     def test_backdoor(self):
@@ -330,8 +341,14 @@ class Server():
         #     c.train()
         #     c.update()
 
+        streams = [torch.cuda.Stream() for _ in range(len(selectedClients))]
+
         for index, c in enumerate(selectedClients):
-            c.train()
+            with torch.cuda.stream(streams[index]):
+                c.train()
+            # c.train()
+
+        torch.cuda.synchronize()
 
         for index, c in enumerate(selectedClients):
             c.update()
@@ -347,7 +364,9 @@ class Server():
         for param in self.model.state_dict():
             self.model.state_dict()[param] += Delta[param]
 
-        self.saveModel("aggregated_model")
+        if self.isSaveChanges:
+            self.saveModel("aggregated_model")
+
         self.iter += 1
     
     def saveLabels(self, clients, prefix):
@@ -357,9 +376,17 @@ class Server():
             labels[index] = client.cid
         torch.save(labels, savepath)
 
+    def saveIterationClientsInfo(self, clientsMalicoiusInfoData):
+        savepath = f'{self.savePath}/iteration_malicoius_clients_info_{self.iter}.pt'
+        torch.save(clientsMalicoiusInfoData, savepath)
+
     def saveModel(self, prefix):
         savepath = f'{self.savePath}/{prefix}_{self.iter}.pth'
         torch.save(self.model.state_dict(), savepath)
+
+    def saveTestingResults(self, testingData):
+        savepath = f'{self.savePath}/testing_results_{self.iter-1}.pt'
+        torch.save(testingData, savepath)
 
     def saveChanges(self, clients, prefix):
 
@@ -766,8 +793,36 @@ class Server():
                 if i not in self.mal_ids and i not in tAtk_id and i not in uAtk_id:
                     normal_clients.append(client)
             self.normal_clients = normal_clients
+
+            if self.isSaveChanges:
+                self.saveChanges(normal_clients, "selected_clients_before_aggregation")
+                clientsMalicoiusInfoData = {
+                    "mal_ids": self.mal_ids,
+                    "tAtk_id": tAtk_id,
+                    "uAtk_id": uAtk_id,
+                    "normal_client": normal_clients,
+                    "len_mal_ids": len(self.mal_ids),
+                    "len_tAtk_id": len(tAtk_id),
+                    "len_uAtk_id": len(uAtk_id),
+                    "len_normal_client": len(normal_clients),
+                }
+                self.saveIterationClientsInfo(clientsMalicoiusInfoData)
         else:
             normal_clients = clients
+
+            if self.isSaveChanges:
+                self.saveChanges(normal_clients, "selected_clients_before_aggregation")
+                clientsMalicoiusInfoData = {
+                    "mal_ids": set(),
+                    "tAtk_id": set(),
+                    "uAtk_id": set(),
+                    "normal_client": normal_clients,
+                    "len_mal_ids": 0,
+                    "len_tAtk_id": 0,
+                    "len_uAtk_id": 0,
+                    "len_normal_client": len(normal_clients),
+                }
+                self.saveIterationClientsInfo(clientsMalicoiusInfoData)
 
         if self.isSaveChanges:
             self.saveChanges(normal_clients, "selected_clients_before_aggregation")
