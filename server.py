@@ -25,6 +25,7 @@ import math
 from clients import *
 import statistics
 from malicious_cordinator import MaliciousCordinator
+from aggregation_types import AggregationTypes
 
 def find_separate_point(d):
     # d should be flatten and np or list
@@ -129,10 +130,11 @@ def find_targeted_attack(dict_lHoGs):
     return sus_tAtk_id
 
 class Server():
-    def __init__(self, model, dataLoader, criterion=F.nll_loss, device='cpu', minimumIterationToStartTheAttack=5):
+    def __init__(self, model, dataLoader, criterion=F.nll_loss, device='cpu', minimumIterationToStartTheAttack=5, lr=0.01):
         self.clients = []
         self.clientsNumOfBeingMalicious = []
         self.model = model
+        self.lr = lr
         self.dataLoader = dataLoader
         self.device = device
         self.emptyStates = None
@@ -164,8 +166,11 @@ class Server():
         self.dbscan_min_samples=5
 
         self.minimumIterationToStartTheAttack = minimumIterationToStartTheAttack
+        
         MaliciousCordinator.minimumIterationToStartTheAttack = minimumIterationToStartTheAttack
-        MaliciousCordinator.model = model
+        MaliciousCordinator.dbscan_eps = self.dbscan_eps
+        MaliciousCordinator.dbscan_min_samples = self.dbscan_min_samples
+        MaliciousCordinator.delay_decision = self.delay_decision
 
         self.lastModelAccuracy = 0
 
@@ -325,7 +330,7 @@ class Server():
         MaliciousCordinator.normalNodeDummySumDelta = {}
         MaliciousCordinator.normalNodeDummyhogAvgLen = {}
         MaliciousCordinator.attackerNodes = []
-        MaliciousCordinator.numberOfAttackerNodes = 0
+        MaliciousCordinator.numberOfAttackerNodesInCurrentIteration = 0
         MaliciousCordinator.numberOfClientsTraining = len(selectedClients)
         MaliciousCordinator.currentIteration = self.iter
         MaliciousCordinator.attackerNodeChoosenGradientInThisIteration = {}
@@ -336,6 +341,14 @@ class Server():
         MaliciousCordinator.attackerNodeOfBackdoor = []
         MaliciousCordinator.attackerNodeOfMultiLabelFlipping = []
         MaliciousCordinator.lastModelAccuracy = self.lastModelAccuracy
+        MaliciousCordinator.model = self.model
+        MaliciousCordinator.krumLamda = None
+        MaliciousCordinator.original_dir = None
+        MaliciousCordinator.vi_shape = None
+        MaliciousCordinator.e_sigma = None
+        MaliciousCordinator.e_mu = None
+
+        print(MaliciousCordinator.aggregationMethod)
 
         # for index, c in enumerate(selectedClients):
         #     c.train()
@@ -438,16 +451,22 @@ class Server():
     def set_AR(self, ar):
         if ar == 'fedavg':
             self.AR = self.FedAvg
+            MaliciousCordinator.aggregationMethod = AggregationTypes.FedAvg
         elif ar == 'median':
             self.AR = self.FedMedian
+            MaliciousCordinator.aggregationMethod = AggregationTypes.Median
         elif ar == 'gm':
             self.AR = self.geometricMedian
+            MaliciousCordinator.aggregationMethod = AggregationTypes.GM
         elif ar == 'krum':
             self.AR = self.krum
+            MaliciousCordinator.aggregationMethod = AggregationTypes.Krum
         elif ar == 'mkrum':
             self.AR = self.mkrum
+            MaliciousCordinator.aggregationMethod = AggregationTypes.MKrum
         elif ar == 'foolsgold':
             self.AR = self.foolsGold
+            MaliciousCordinator.aggregationMethod = AggregationTypes.FoolsGold
         elif ar == 'residualbase':
             self.AR = self.residualBase
         elif ar == 'attention':
@@ -456,8 +475,12 @@ class Server():
             self.AR = self.net_mlp
         elif ar == 'mudhog':
             self.AR = self.mud_hog
+            MaliciousCordinator.aggregationMethod = AggregationTypes.MudHog
         elif ar == 'fedavg_oracle':
             self.AR = self.fedavg_oracle
+        elif ar == 'trimmed':
+            self.AR = self.trim
+            MaliciousCordinator.aggregationMethod = AggregationTypes.Trimmed
         else:
             raise ValueError("Not a valid aggregation rule or aggregation rule not implemented")
 
@@ -829,6 +852,46 @@ class Server():
 
         out = self.FedFuncWholeNet(normal_clients, lambda arr: torch.mean(arr, dim=-1, keepdim=True))
         return out
+    
+    def trim(self, clients, b=0):
+        grad_list = []
+        for c in clients:
+            grad_list.append(c.getDelta())
+
+        param_list = [np.concatenate([np.array(x[xx], dtype=np.float32).reshape((-1, 1)) for xx in x], axis=0) for x in grad_list]
+        
+        # Sort
+        sorted_array = np.sort(np.concatenate(param_list, axis=1), axis=-1)
+        
+        # Trim
+        n = len(param_list)
+        m = n - 2 * b
+        trim_nd = np.mean(sorted_array[:, b:(b + m)], axis=-1, keepdims=True)
+
+        modelData = self.model.state_dict()
+        Delta = deepcopy(self.emptyStates)
+
+        # # Update global model
+        # idx = 0
+        # for p in modelData:
+        #     param = deepcopy(modelData[p])
+        #     # if param.grad_req == 'null':
+        #     #     continue
+        #     shape = param.data().shape
+        #     param.set_data(param.data() - self.lr * trim_nd[idx:idx + param.data().size].reshape(shape))
+        #     idx += param.data().size
+        #     Delta = param - modelData[p]
+
+        idx = 0
+        for p in modelData:
+            param = deepcopy(modelData[p])
+            shape = param.shape
+            update_value = torch.tensor(trim_nd[idx:idx + param.numel()].reshape(shape), dtype=param.dtype, device=param.device)
+            param.data -= self.lr * update_value
+            idx += param.numel()
+            Delta[p] = param - modelData[p]
+
+        return Delta
 
     def FedFuncWholeNet(self, clients, func):
         '''

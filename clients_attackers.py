@@ -13,6 +13,7 @@ import random
 import statistics
 from malicious_cordinator import MaliciousCordinator
 from attack_types import AttackTypes
+from aggregation_types import AggregationTypes
 
 class Unreliable_client(Client):
     def __init__(self, cid, model, dataLoader, optimizer, criterion=F.nll_loss,
@@ -240,6 +241,7 @@ class Attacker_Guassian_Using_Coordinator(Client):
         logging.info("init ATTACK Coordinator Client {}".format(cid))
         self.scale = scale
         self.isSignFlippingAttacker = isSignFlippingAttacker
+        MaliciousCordinator.numberOfAttackerNodesAccessable+=1
 
     def update(self):
         assert self.isTrained, 'nothing to update, call train() to obtain gradients'
@@ -253,6 +255,7 @@ class Attacker_Guassian_Using_Coordinator(Client):
             result = MaliciousCordinator.calculateNewMalicoiusAttack(self, AttackTypes.GuassianAttack)
             isNewMalicoiusClientCalculated = result["isNewMalicoiusClientCalculated"]
             newMaliciousClient = result["newMaliciousClient"]
+
         for p in self.originalState:
             self.stateChange[p] = newState[p] - self.originalState[p]
             if p not in trainable_parameter:
@@ -290,6 +293,7 @@ class Attacker_LabelFlipping_Using_Coordinator(Client):
         self.target_label = target_label
         logging.info(f"init ATTACK LABEL Change from {source_label} to {target_label} Client {cid}")
         self.isLabelFlippingAttacker = isLabelFlippingAttacker
+        MaliciousCordinator.numberOfAttackerNodesAccessable+=1
 
     def train(self):
         self.model.to(self.device)
@@ -318,6 +322,7 @@ class Attacker_MultiLabelFlipping_Using_Coordinator(Client):
         self.source_labels = source_labels
         self.target_label = target_label
         self.isMultiLabelFlippingAttacker = isMultiLabelFlippingAttacker
+        MaliciousCordinator.numberOfAttackerNodesAccessable+=1
 
     def train(self):
         self.model.to(self.device)
@@ -345,6 +350,7 @@ class Attacker_Backdoor_Using_Coordinator(Client):
         self.utils = Backdoor_Utils()
         logging.info("init BACKDOOR ATTACK Client {}".format(cid))
         self.isBackdoorAttacker = isBackdoorAttacker
+        MaliciousCordinator.numberOfAttackerNodesAccessable+=1
 
     def train(self):
         self.model.to(self.device)

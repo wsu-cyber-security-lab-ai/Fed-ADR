@@ -1,6 +1,6 @@
 #!/bin/bash
 # declare -a AR_METHOD=("mudhog" "fedavg" "median" "gm" "krum" "mkrum" "foolsgold")
-declare -a AR_METHOD=("mudhog" "fedavg" "gm" "krum" "mkrum" "foolsgold")
+declare -a AR_METHOD=("mudhog" "fedavg" "median" "gm" "krum" "mkrum" "trimmed" "foolsgold")
 
 #### LIST CLIENTS for MNIST dataset
 # Unrelibale: upto 4 nodes
@@ -57,11 +57,11 @@ DATASET="mnist"
 LR=1e-2 # SGD optimizer learning rate
 WD=1e-4  # weight-decay
 MOMENTUM=0.5 # SGD optimizer momentum
-GLOBAL_EPOCHS=40
+GLOBAL_EPOCHS=20
 LOCAL_EPOCHS=4
 STD_UR=30
 NUM_CLIENTS=40
-MINIMUM_ITERATION_TO_START_THE_ATTACK=10
+MINIMUM_ITERATION_TO_START_THE_ATTACK=5
 LOADER_TYPE=dirichlet
 
 # We train the FL model with SGD optimizer (learning
@@ -107,18 +107,22 @@ LOADER_TYPE=dirichlet
 # and (j+2) multi-label-flipping (MLF) attackers; where j in range [1,5].
 # EXP_NAME="sExp4Ba_40ep10"
 
-for ((i=3; i < 4; i++));
+for ((i=6; i < 7; i++));
 do
 for ((j=5; j<6; j++));
 do
 STARTING_THRESHOLD=0
-EXP_NAME="krum_${j}_"
+EXP_NAME="krum_9_${j}_"
 # EXP_NAME="Exp_40C_40ep_10start_${j}_"
 # CUDA_VISIBLE_DEVICES=0 python main.py --dataset $DATASET --AR ${AR_METHOD[$i]} --loader_type $LOADER_TYPE --experiment_name ${EXP_NAME}_${DATASET}_${AR_METHOD[$i]}_40C_$((j+3))MLF --epochs $GLOBAL_EPOCHS --num_clients $NUM_CLIENTS --inner_epochs $LOCAL_EPOCHS --list_uatk_flip_sign ${LIST_SF_ATTACKERS[$j]} --list_tatk_label_flipping ${LIST_LF_ATTACKERS[$j]} --list_tatk_multi_label_flipping ${LIST_MLF_ATTACKERS[$j]} --source_labels 1,2,3 --lr $LR --weight_decay $WD --momentum $MOMENTUM --verbose  --max_std_unreliable $STD_UR  --minimumIterationToStartTheAttack $MINIMUM_ITERATION_TO_START_THE_ATTACK 
 # CUDA_VISIBLE_DEVICES=0 python main.py --dataset $DATASET --AR ${AR_METHOD[$i]} --loader_type $LOADER_TYPE --attacks "backdoor" --experiment_name ${EXP_NAME}_${DATASET}_${AR_METHOD[$i]}_40C_$((j+3))MLF --epochs $GLOBAL_EPOCHS --num_clients $NUM_CLIENTS --inner_epochs $LOCAL_EPOCHS --list_uatk_flip_sign ${LIST_SF_ATTACKERS[$j]} --list_tatk_backdoor ${LIST_BD_ATTACKERS[$j]} --list_tatk_label_flipping ${LIST_LF_ATTACKERS[$j]} --source_labels 1,2,3 --lr $LR --weight_decay $WD --momentum $MOMENTUM --verbose  --max_std_unreliable $STD_UR  --minimumIterationToStartTheAttack $MINIMUM_ITERATION_TO_START_THE_ATTACK 
 # CUDA_VISIBLE_DEVICES=0 python main.py --save_model_weights --dataset $DATASET --AR ${AR_METHOD[$i]} --loader_type $LOADER_TYPE --experiment_name ${EXP_NAME}_${DATASET}_${AR_METHOD[$i]}_40C_$((j+3))MLF --epochs $GLOBAL_EPOCHS --num_clients $NUM_CLIENTS --inner_epochs $LOCAL_EPOCHS --list_uatk_flip_sign ${LIST_SF_ATTACKERS[$j]} --source_labels 1,2,3 --lr $LR --weight_decay $WD --momentum $MOMENTUM --verbose  --max_std_unreliable $STD_UR  --minimumIterationToStartTheAttack $MINIMUM_ITERATION_TO_START_THE_ATTACK 
-CUDA_VISIBLE_DEVICES=0 python main.py --save_model_weights --dataset $DATASET --AR ${AR_METHOD[$i]} --loader_type $LOADER_TYPE --experiment_name ${EXP_NAME}_${DATASET}_${AR_METHOD[$i]}_40C_$((j+3))MLF --epochs $GLOBAL_EPOCHS --num_clients $NUM_CLIENTS --inner_epochs $LOCAL_EPOCHS --list_uatk_flip_sign ${LIST_SF_ATTACKERS[$j]} --list_tatk_multi_label_flipping ${LIST_MLF_ATTACKERS[$j]} --source_labels 1,2,3 --lr $LR --weight_decay $WD --momentum $MOMENTUM --verbose  --max_std_unreliable $STD_UR  --minimumIterationToStartTheAttack $MINIMUM_ITERATION_TO_START_THE_ATTACK 
 # CUDA_VISIBLE_DEVICES=0 python main.py --dataset $DATASET --AR ${AR_METHOD[$i]} --loader_type $LOADER_TYPE --experiment_name ${EXP_NAME}_${DATASET}_${AR_METHOD[$i]}_40C_$((j+3))MLF --epochs $GLOBAL_EPOCHS --num_clients $NUM_CLIENTS --inner_epochs $LOCAL_EPOCHS --list_uatk_flip_sign ${LIST_SF_ATTACKERS[$j]} --source_labels 1,2,3 --lr $LR --weight_decay $WD --momentum $MOMENTUM --verbose  --max_std_unreliable $STD_UR  --minimumIterationToStartTheAttack $MINIMUM_ITERATION_TO_START_THE_ATTACK 
+
+CUDA_VISIBLE_DEVICES=0 python main.py --save_model_weights --dataset $DATASET --AR ${AR_METHOD[$i]} --loader_type $LOADER_TYPE --experiment_name ${EXP_NAME}_${DATASET}_${AR_METHOD[$i]}_40C_$((j+3))MLF --epochs $GLOBAL_EPOCHS --num_clients $NUM_CLIENTS --inner_epochs $LOCAL_EPOCHS --list_uatk_flip_sign ${LIST_SF_ATTACKERS[$j]} --source_labels 1,2,3 --lr $LR --weight_decay $WD --momentum $MOMENTUM --verbose  --max_std_unreliable $STD_UR  --minimumIterationToStartTheAttack $MINIMUM_ITERATION_TO_START_THE_ATTACK
+# CUDA_VISIBLE_DEVICES=0 python main.py --save_model_weights --dataset $DATASET --AR ${AR_METHOD[$i]} --loader_type $LOADER_TYPE --experiment_name ${EXP_NAME}_${DATASET}_${AR_METHOD[$i]}_40C_$((j+3))MLF --epochs $GLOBAL_EPOCHS --num_clients $NUM_CLIENTS --inner_epochs $LOCAL_EPOCHS --list_uatk_flip_sign ${LIST_SF_ATTACKERS[$j]} --list_tatk_multi_label_flipping ${LIST_MLF_ATTACKERS[$j]} --source_labels 1,2,3 --lr $LR --weight_decay $WD --momentum $MOMENTUM --verbose  --max_std_unreliable $STD_UR  --minimumIterationToStartTheAttack $MINIMUM_ITERATION_TO_START_THE_ATTACK 
 
 done
 done
+# CUDA_VISIBLE_DEVICES=0 python main.py --save_model_weights --dataset $DATASET --AR ${AR_METHOD[$i]} --loader_type $LOADER_TYPE --experiment_name ${EXP_NAME}_${DATASET}_${AR_METHOD[$i]}_40C_$((j+3))MLF --epochs $GLOBAL_EPOCHS --num_clients $NUM_CLIENTS --inner_epochs $LOCAL_EPOCHS --list_uatk_flip_sign ${LIST_SF_ATTACKERS[$j]} --source_labels 1,2,3 --lr $LR --weight_decay $WD --momentum $MOMENTUM --verbose  --max_std_unreliable $STD_UR  --minimumIterationToStartTheAttack $MINIMUM_ITERATION_TO_START_THE_ATTACK & 
+#  sudo pkill -f main.py

@@ -36,7 +36,7 @@ def parse_args():
         help="where to save the data partitions. Default is ./data/loader.pk")
     parser.add_argument("--AR", type=str, default='fedavg',
         choices=['fedavg', 'median', 'gm', 'krum', 'mkrum', 'foolsgold',
-            'residualbase', 'attention', 'mlp', 'mudhog', 'fedavg_oracle'],
+            'residualbase', 'attention', 'mlp', 'mudhog', 'fedavg_oracle', "trimmed"],
         help="Aggregation rule. Default is fedavg.")
     parser.add_argument("--n_attacker_backdoor", type=int, default=0,
         help="Default is no attacker backdoor.")
