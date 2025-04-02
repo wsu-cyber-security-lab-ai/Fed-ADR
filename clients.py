@@ -8,6 +8,7 @@ import torch.nn.functional as F
 import logging
 
 from utils import utils
+import torch.nn.utils as torchutils
 
 class Client():
     def __init__(self, cid, model, dataLoader, optimizer, criterion=F.nll_loss, device='cpu', inner_epochs=1):
@@ -63,6 +64,8 @@ class Client():
                 output = self.model(data)
                 loss = self.criterion(output, target)
                 loss.backward()
+                #  to prevent the exploding gradient problem during training
+                torchutils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
                 self.optimizer.step()
         self.isTrained = True
         self.model.cpu()  ## avoid occupying gpu when idle

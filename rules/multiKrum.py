@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-
 '''
 Krum aggregation
 - find the point closest to its neignborhood
@@ -39,7 +38,6 @@ def getKrum(input):
     # Multi-Krum
     mkrum = input[:, :, nbh[:, i_star, :].view(-1)].mean(2, keepdims=True)
     return krum, mkrum
-
 
 class Net(nn.Module):
     def __init__(self, mode='mkrum'):

@@ -245,7 +245,7 @@ class Attacker_Guassian_Using_Coordinator(Client):
 
     def update(self):
         assert self.isTrained, 'nothing to update, call train() to obtain gradients'
-        newState = self.model.state_dict()
+        newState = deepcopy(self.model.state_dict())
         trainable_parameter = utils.getTrainableParameters(self.model)
 
         isNewMalicoiusClientCalculated = False
@@ -264,7 +264,8 @@ class Attacker_Guassian_Using_Coordinator(Client):
             #                 continue
 
             if isNewMalicoiusClientCalculated == True:
-                self.stateChange[p] = newMaliciousClient[p]
+                newState[p] = newMaliciousClient[p]
+                self.stateChange[p] = newState[p] - self.originalState[p]
 
             self.sum_hog[p] += self.stateChange[p]
             K_ = len(self.hog_avg)
@@ -279,9 +280,11 @@ class Attacker_Guassian_Using_Coordinator(Client):
         self.isTrained = False
 
         if isNewMalicoiusClientCalculated == True:
-            MaliciousCordinator.attackerNodeChoosenGradientInThisIteration[self.cid] = self.stateChange
-            MaliciousCordinator.attackerNodeChoosenAvgDeltaInThisIteration[self.cid] = self.avg_delta
-            MaliciousCordinator.attackerNodeChoosenSumDeltaInThisIteration[self.cid] = self.sum_hog
+            self.setModelParameter(deepcopy(newState))
+            MaliciousCordinator.attackerNodeChoosenGradientInThisIteration[self.cid] = deepcopy(self.stateChange)
+            MaliciousCordinator.attackerNodeChoosenWeightInThisIteration[self.cid] = deepcopy(newState)
+            MaliciousCordinator.attackerNodeChoosenAvgDeltaInThisIteration[self.cid] = deepcopy(self.avg_delta)
+            MaliciousCordinator.attackerNodeChoosenSumDeltaInThisIteration[self.cid] = deepcopy(self.sum_hog)
             MaliciousCordinator.attackerNodeChoosenhogAvgLenInThisIteration[self.cid] = len(self.hog_avg)
 
 class Attacker_LabelFlipping_Using_Coordinator(Client):

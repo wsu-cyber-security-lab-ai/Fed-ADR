@@ -96,6 +96,7 @@ def main(args):
 
     # create server instance
     model0 = Net()
+    print("lr", args.lr)
     server = Server(model0, testData, criterion, device, args.minimumIterationToStartTheAttack, args.lr)
     server.set_AR(args.AR)
     if args.dataset == 'cifar':
@@ -216,8 +217,19 @@ def main(args):
     loss, accuracy = server.test()
     server.lastModelAccuracy = accuracy
     steps = 0
+
+    list_uatk_flip_sign = args.list_uatk_flip_sign
+    list_uatk_add_noise = args.list_uatk_add_noise
+    list_tatk_label_flipping = args.list_tatk_label_flipping
+    list_tatk_multi_label_flipping = args.list_tatk_multi_label_flipping
+
+
     writer.add_scalar('test/loss', loss, steps)
     writer.add_scalar('test/accuracy', accuracy, steps)
+
+    writer.add_scalar('test/num_of_bengin_marked_as_malicious', 0, 0)
+    writer.add_scalar('test/num_of_malicious_marked_as_bengin', 0, 0)
+    writer.add_scalar('test/num_of_malicoius_marked_as_malicious', 0, 0)
 
     if args.attacks and 'BACKDOOR' in args.attacks.upper():
         if 'SEMANTIC' in args.attacks.upper():
@@ -227,6 +239,8 @@ def main(args):
 
         writer.add_scalar('test/loss_backdoor', loss, steps)
         writer.add_scalar('test/backdoor_success_rate', accuracy, steps)
+
+    
 
     for j in range(args.epochs):
         steps = j + 1
@@ -242,8 +256,49 @@ def main(args):
         loss, accuracy = server.test()
         server.lastModelAccuracy = accuracy
 
+        num_of_malicious_marked_as_bengin = 0
+        num_of_bengin_marked_as_malicious = 0
+        num_of_malicoius_marked_as_malicious = 0
+
+        selected_clients_labels_int = [int(x.cid) for x in server.normal_clients]
+
+        # print("iteration result")
+        # print("set(list_uatk_flip_sign)", set(list_uatk_flip_sign))
+        # print("set(list_uatk_add_noise)", set(list_uatk_add_noise))
+        # print("set(list_tatk_label_flipping)", set(list_tatk_label_flipping))
+        # print("set(list_tatk_multi_label_flipping)", set(list_tatk_multi_label_flipping))
+        # print((set(list_uatk_flip_sign) | set(list_uatk_add_noise) | set(list_tatk_label_flipping) | set(list_tatk_multi_label_flipping)))
+        # print()
+        # print("normal clients", selected_clients_labels_int)
+        # print("normal clients len", len(selected_clients_labels_int))
+        # print(args.num_clients)
+        # print()
+
+        bengin_marked_as_malicious_nodes = []
+
+        for i in range(args.num_clients):
+            if (i not in list_uatk_flip_sign) and (i not in list_uatk_add_noise) and (i not in list_tatk_label_flipping) and (i not in list_tatk_multi_label_flipping) and (i not in selected_clients_labels_int):
+                num_of_bengin_marked_as_malicious+=1
+                bengin_marked_as_malicious_nodes.append(i)
+
+        for s in (set(list_uatk_flip_sign) | set(list_uatk_add_noise) | set(list_tatk_label_flipping) | set(list_tatk_multi_label_flipping)):
+            if s in selected_clients_labels_int:
+                num_of_malicious_marked_as_bengin+=1
+            else:
+                num_of_malicoius_marked_as_malicious+=1
+
         writer.add_scalar('test/loss', loss, steps)
         writer.add_scalar('test/accuracy', accuracy, steps)
+
+        # print("bengin_marked_as_malicious_nodes", bengin_marked_as_malicious_nodes)
+        # print("num_of_bengin_marked_as_malicious", num_of_bengin_marked_as_malicious)
+        # print("num_of_malicious_marked_as_bengin", num_of_malicious_marked_as_bengin)
+        # print("num_of_malicoius_marked_as_malicious", num_of_malicoius_marked_as_malicious)
+        # print()
+
+        writer.add_scalar('test/num_of_bengin_marked_as_malicious', num_of_bengin_marked_as_malicious, steps)
+        writer.add_scalar('test/num_of_malicious_marked_as_bengin', num_of_malicious_marked_as_bengin, steps)
+        writer.add_scalar('test/num_of_malicoius_marked_as_malicious', num_of_malicoius_marked_as_malicious, steps)
 
         if args.attacks and 'BACKDOOR' in args.attacks.upper():
             if 'SEMANTIC' in args.attacks.upper():

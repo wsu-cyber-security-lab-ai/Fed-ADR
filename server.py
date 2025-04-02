@@ -26,6 +26,7 @@ from clients import *
 import statistics
 from malicious_cordinator import MaliciousCordinator
 from aggregation_types import AggregationTypes
+from sklearn.impute import SimpleImputer
 
 def find_separate_point(d):
     # d should be flatten and np or list
@@ -121,6 +122,11 @@ def find_targeted_attack(dict_lHoGs):
     """
     id_lHoGs = np.array(list(dict_lHoGs.keys()))
     value_lHoGs = np.array(list(dict_lHoGs.values()))
+    value_lHoGs = np.clip(value_lHoGs, -1e10, 1e10)
+    if np.any(np.isnan(value_lHoGs)):
+        imputer = SimpleImputer(strategy='mean')  # Other options: 'median', 'most_frequent', 'constant'
+        value_lHoGs = imputer.fit_transform(value_lHoGs)
+        
     cluster_lh1 = KMeans(n_clusters=2, random_state=0).fit(value_lHoGs)
     #cluster_lh = DBSCAN(eps=35, min_samples=7, metric='mahalanobis', n_jobs=-1).fit(value_lHoGs)
     #logging.info(f"DBSCAN labels={cluster_lh.labels_}")
@@ -164,6 +170,7 @@ class Server():
         # DBSCAN hyper-parameters:
         self.dbscan_eps = 0.5
         self.dbscan_min_samples=5
+        self.normal_clients = []
 
         self.minimumIterationToStartTheAttack = minimumIterationToStartTheAttack
         
@@ -171,6 +178,7 @@ class Server():
         MaliciousCordinator.dbscan_eps = self.dbscan_eps
         MaliciousCordinator.dbscan_min_samples = self.dbscan_min_samples
         MaliciousCordinator.delay_decision = self.delay_decision
+        MaliciousCordinator.emptyStates = deepcopy(self.emptyStates)
 
         self.lastModelAccuracy = 0
 
@@ -322,9 +330,13 @@ class Server():
     def train(self, group):
         selectedClients = [self.clients[i] for i in group]
         MaliciousCordinator.attackerNodeBeforeAttackGradient = {}
+        MaliciousCordinator.attackerNodeBeforeAttackWeight = {}
         MaliciousCordinator.attackerNodeAvgDelta = {}
         MaliciousCordinator.attackerNodeSumDelta = {}
         MaliciousCordinator.attackerNodehogAvgLen = {}
+        MaliciousCordinator.attackerNodeOfLabelFlipping = []
+        MaliciousCordinator.attackerNodeOfBackdoor = []
+        MaliciousCordinator.attackerNodeOfMultiLabelFlipping = []
         MaliciousCordinator.normalNodeDummyValue = {}
         MaliciousCordinator.normalNodeDummyAvgDelta = {}
         MaliciousCordinator.normalNodeDummySumDelta = {}
@@ -334,19 +346,23 @@ class Server():
         MaliciousCordinator.numberOfClientsTraining = len(selectedClients)
         MaliciousCordinator.currentIteration = self.iter
         MaliciousCordinator.attackerNodeChoosenGradientInThisIteration = {}
+        MaliciousCordinator.attackerNodeChoosenWeightInThisIteration = {}
         MaliciousCordinator.attackerNodeChoosenAvgDeltaInThisIteration = {}
         MaliciousCordinator.attackerNodeChoosenSumDeltaInThisIteration = {}
         MaliciousCordinator.attackerNodeChoosenhogAvgLenInThisIteration = {}
-        MaliciousCordinator.attackerNodeOfLabelFlipping = []
-        MaliciousCordinator.attackerNodeOfBackdoor = []
-        MaliciousCordinator.attackerNodeOfMultiLabelFlipping = []
         MaliciousCordinator.lastModelAccuracy = self.lastModelAccuracy
-        MaliciousCordinator.model = self.model
+        MaliciousCordinator.model = deepcopy(self.model)
+
         MaliciousCordinator.krumLamda = None
         MaliciousCordinator.original_dir = None
+        
         MaliciousCordinator.vi_shape = None
+
         MaliciousCordinator.e_sigma = None
         MaliciousCordinator.e_mu = None
+
+        MaliciousCordinator.directed_dim = None
+        MaliciousCordinator.direction = None
 
         print(MaliciousCordinator.aggregationMethod)
 
@@ -354,14 +370,14 @@ class Server():
         #     c.train()
         #     c.update()
 
-        streams = [torch.cuda.Stream() for _ in range(len(selectedClients))]
+        # streams = [torch.cuda.Stream() for _ in range(len(selectedClients))]
 
         for index, c in enumerate(selectedClients):
-            with torch.cuda.stream(streams[index]):
-                c.train()
-            # c.train()
+            # with torch.cuda.stream(streams[index]):
+            #     c.train()
+            c.train()
 
-        torch.cuda.synchronize()
+        # torch.cuda.synchronize()
 
         for index, c in enumerate(selectedClients):
             c.update()
@@ -375,7 +391,18 @@ class Server():
         logging.info(f"[Server] The aggregation takes {toc - tic:0.6f} seconds.\n")
 
         for param in self.model.state_dict():
+            # if param == 'fc3.bias':
+            #     print("param_stack", param)
+            #     print()
+            #     print("before self.model.state_dict()[param]", self.model.state_dict()[param])
+            #     print()
+
             self.model.state_dict()[param] += Delta[param]
+            # if param == 'fc3.bias':
+            #     print("Delta[param]", Delta[param])
+            #     print()
+            #     print("after self.model.state_dict()[param]", self.model.state_dict()[param])
+            #     print()
 
         if self.isSaveChanges:
             self.saveModel("aggregated_model")
@@ -687,6 +714,12 @@ class Server():
             # MNIST uses default eps=0.5, min_sample=5
             # CIFAR uses eps=50, min_sample=5 (based on heuristic evaluation Euclidean distance of grad of RestNet18.
             start_t = time.time()
+
+            value_sHoGs = np.clip(value_sHoGs, -1e10, 1e10)
+            if np.any(np.isnan(value_sHoGs)):
+                imputer = SimpleImputer(strategy='mean')
+                value_sHoGs = imputer.fit_transform(value_sHoGs)
+                
             cluster_sh = DBSCAN(eps=self.dbscan_eps, n_jobs=-1,
                 min_samples=self.dbscan_min_samples).fit(value_sHoGs)
             t_dbscan = time.time() - start_t
@@ -832,6 +865,7 @@ class Server():
                 self.saveIterationClientsInfo(clientsMalicoiusInfoData)
         else:
             normal_clients = clients
+            self.normal_clients = normal_clients
 
             if self.isSaveChanges:
                 self.saveChanges(normal_clients, "selected_clients_before_aggregation")
@@ -853,43 +887,120 @@ class Server():
         out = self.FedFuncWholeNet(normal_clients, lambda arr: torch.mean(arr, dim=-1, keepdim=True))
         return out
     
-    def trim(self, clients, b=0):
-        grad_list = []
-        for c in clients:
-            grad_list.append(c.getDelta())
-
-        param_list = [np.concatenate([np.array(x[xx], dtype=np.float32).reshape((-1, 1)) for xx in x], axis=0) for x in grad_list]
+    def trim4(self, clients, b=19):
+        model_params = clients[0].model.state_dict()  # Get parameter structure
+        trimmed_means = {}
         
-        # Sort
-        sorted_array = np.sort(np.concatenate(param_list, axis=1), axis=-1)
-        
-        # Trim
-        n = len(param_list)
-        m = n - 2 * b
-        trim_nd = np.mean(sorted_array[:, b:(b + m)], axis=-1, keepdims=True)
+        for param_name in model_params:
+            # Stack all clients' parameters for this layer
+            param_stack = torch.stack([client.model.state_dict()[param_name] for client in clients])
+            
+            # Sort along client dimension (dim=0)
+            sorted_params = torch.sort(param_stack, dim=0).values
+            
+            # Trim b smallest and largest
+            trimmed_params = sorted_params[b:-b]
+            
+            # Compute mean of remaining values
+            trimmed_means[param_name] = torch.mean(trimmed_params, dim=0)
 
+            # if param_name == 'fc3.bias':
+            #     print("param_stack", param_stack)
+            #     print()
+            #     print("trimmed_values", trimmed_params)
+            #     print()
+            #     print("trimmed_means[param_key]", trimmed_means[param_name])
+            #     print()
+
+        # Compute delta
         modelData = self.model.state_dict()
         Delta = deepcopy(self.emptyStates)
+        for p in modelData:
+            Delta[p] = trimmed_means[p].to(
+                dtype=modelData[p].dtype, device=modelData[p].device
+            ) - modelData[p]
 
-        # # Update global model
-        # idx = 0
-        # for p in modelData:
-        #     param = deepcopy(modelData[p])
-        #     # if param.grad_req == 'null':
-        #     #     continue
-        #     shape = param.data().shape
-        #     param.set_data(param.data() - self.lr * trim_nd[idx:idx + param.data().size].reshape(shape))
-        #     idx += param.data().size
-        #     Delta = param - modelData[p]
+        return Delta, trimmed_means
+    
+    def trim(self, clients, b=2):
+        num_clients = len(clients)
+        if 2 * b >= num_clients:
+            raise ValueError("Too many values being trimmed; reduce b or increase clients.")
+
+        param_keys = clients[0].getDelta().keys()
+        trimmed_means = {}
+
+        for param_key in param_keys:
+            # Collect and flatten parameters (PyTorch version)
+            param_values = torch.stack(
+                [client.model.state_dict()[param_key].flatten() for client in clients]
+            )
+            
+            # Sort and trim
+            sorted_values = torch.sort(param_values, dim=0).values
+            trimmed_values = sorted_values[b:num_clients - b]
+            
+            # Compute mean and reshape
+            trimmed_means[param_key] = trimmed_values.mean(dim=0).reshape(
+                clients[0].model.state_dict()[param_key].shape
+            )
+
+        # Compute delta
+        modelData = self.model.state_dict()
+        Delta = deepcopy(self.emptyStates)
+        for p in modelData:
+            Delta[p] = trimmed_means[p].to(
+                dtype=modelData[p].dtype, device=modelData[p].device
+            ) - modelData[p]
+
+        return Delta
+
+    
+    def trim2(self, clients, b=2):
+        num_clients = len(clients)
+        
+        param_keys = clients[0].getDelta().keys()
+        trimmed_means = {}
+        for param_key in param_keys:
+            param_values = np.array([client.model.state_dict()[param_key] for client in clients])
+
+            flattened_data = param_values.reshape(param_values.shape[0], -1)
+
+            client_sums = np.sum(flattened_data, axis=1)
+
+            # Get indices that would sort the clients based on the sum of their data
+            sorted_indices = np.argsort(client_sums)
+
+            # Use the sorted indices to reorder the clients
+            sorted_values = param_values[sorted_indices]
+
+            # # Step 2: Sort the values for this parameter
+            # sorted_values = np.sort(param_values, axis=0)  # Sort along each parameter axis
+            
+            # Step 3: Remove the smallest and largest values
+            trimmed_values = sorted_values[b:num_clients-b]  # Remove the first (smallest) and last (largest) elements
+            
+            # Step 4: Calculate the mean for the remaining values
+            trimmed_means[param_key] = np.mean(trimmed_values, axis=0)
+            trimmed_means[param_key] = torch.from_numpy(trimmed_means[param_key])
+
+        # Initialize new model delta
+        modelData = self.model.state_dict()
+        Delta = deepcopy(self.emptyStates)
 
         idx = 0
         for p in modelData:
             param = deepcopy(modelData[p])
-            shape = param.shape
-            update_value = torch.tensor(trim_nd[idx:idx + param.numel()].reshape(shape), dtype=param.dtype, device=param.device)
-            param.data -= self.lr * update_value
-            idx += param.numel()
-            Delta[p] = param - modelData[p]
+            param_shape = param.shape
+            param_size = param.numel()
+
+            trimmed_tensor = torch.tensor(trimmed_means[p], 
+                                        dtype=modelData[p].dtype, 
+                                        device=modelData[p].device)
+            
+            Delta[p] = trimmed_tensor - modelData[p]
+
+            idx += param_size
 
         return Delta
 
@@ -913,6 +1024,7 @@ class Server():
         print("clients participating in delta", [obj.cid for obj in clients])
         # mean_values = {key: values.mean().item() for key, values in Delta.items()}
         # print("delta", mean_values)
+        # print("Delta", Delta["fc3.bias"])
         return Delta
 
     def FedFuncWholeStateDict(self, clients, func):

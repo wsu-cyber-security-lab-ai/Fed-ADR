@@ -21,9 +21,13 @@ import time
 from attack_types import AttackTypes
 from aggregation_types import AggregationTypes
 import byzantine
+from sklearn.impute import SimpleImputer
+
+import math
 
 class MaliciousCordinator():
     attackerNodeBeforeAttackGradient = {}
+    attackerNodeBeforeAttackWeight = {}
     attackerNodeAttackerType = {}
     attackerNodeAvgDelta = {}
     attackerNodeSumDelta = {}
@@ -57,6 +61,7 @@ class MaliciousCordinator():
     dbscan_min_samples = 5
 
     attackerNodeChoosenGradientInThisIteration = {}
+    attackerNodeChoosenWeightInThisIteration = {}
     attackerNodeChoosenAvgDeltaInThisIteration = {}
     attackerNodeChoosenSumDeltaInThisIteration = {}
     attackerNodeChoosenhogAvgLenInThisIteration = {}
@@ -73,6 +78,8 @@ class MaliciousCordinator():
 
     lastModelAccuracy = 0
 
+    emptyStates = None
+
     def addMaliciousClientUpdate(client, attackerType):
         MaliciousCordinator.attackerNodes.append(client.cid)
         MaliciousCordinator.numberOfAttackerNodesInCurrentIteration += 1
@@ -82,7 +89,7 @@ class MaliciousCordinator():
         clientState = client.model.state_dict()
         clientAvgDelta = client.avg_delta
         clientSumDelta = client.sum_hog
-        clientStateChange = client.model.state_dict()
+        clientStateChange = deepcopy(MaliciousCordinator.emptyStates)
 
         for p in client.originalState:
             if p not in trainable_parameter:
@@ -90,6 +97,7 @@ class MaliciousCordinator():
             clientStateChange[p] = clientState[p] - client.originalState[p]
 
         MaliciousCordinator.attackerNodeBeforeAttackGradient[client.cid] = deepcopy(clientStateChange)
+        MaliciousCordinator.attackerNodeBeforeAttackWeight[client.cid] = deepcopy(clientState)
         MaliciousCordinator.attackerNodeAvgDelta[client.cid] = deepcopy(clientAvgDelta)
         MaliciousCordinator.attackerNodeSumDelta[client.cid] = deepcopy(clientSumDelta)
         MaliciousCordinator.attackerNodehogAvgLen[client.cid] = len(client.hog_avg)
@@ -116,15 +124,12 @@ class MaliciousCordinator():
         elif MaliciousCordinator.aggregationMethod == AggregationTypes.Trimmed:
             result = MaliciousCordinator.formulate_trim_attack(client, attackerType)
             return result
-
     
     def formulate_mudhog_attack(client, attackType):
         result = {
             "newMaliciousClient": None,
             "isNewMalicoiusClientCalculated": False,
         }
-
-        # print("MaliciousCordinator.lastModelAccuracy", MaliciousCordinator.lastModelAccuracy)
 
         if  (
             len(MaliciousCordinator.attackerNodeBeforeAttackGradient) == MaliciousCordinator.numberOfAttackerNodesInCurrentIteration and
@@ -135,6 +140,10 @@ class MaliciousCordinator():
         # if  MaliciousCordinator.currentIteration % 3 != 0 and len(MaliciousCordinator.attackerNodeBeforeAttackGradient) == MaliciousCordinator.numberOfAttackerNodesInCurrentIteration and MaliciousCordinator.currentIteration>=MaliciousCordinator.minimumIterationToStartTheAttack and MaliciousCordinator.numberOfAttackerNodesInCurrentIteration>=MaliciousCordinator.minimumNumberOfMaliciousClientsThreshold:
             dict1 = dict(MaliciousCordinator.attackerNodeChoosenGradientInThisIteration)
             dict2 = MaliciousCordinator.attackerNodeBeforeAttackGradient
+            dict2.update({k: v for k, v in dict1.items() if k in dict2})
+
+            dict1 = dict(MaliciousCordinator.attackerNodeChoosenWeightInThisIteration)
+            dict2 = MaliciousCordinator.attackerNodeBeforeAttackWeight
             dict2.update({k: v for k, v in dict1.items() if k in dict2})
 
             dict1 = dict(MaliciousCordinator.attackerNodeChoosenAvgDeltaInThisIteration)
@@ -159,10 +168,10 @@ class MaliciousCordinator():
             for i in range(MaliciousCordinator.numberOfClientsTraining):
                 if i not in MaliciousCordinator.attackerNodes:
                     selectedRandomMaliciousKey = random.sample(listOfMaliciousClientsIdsToChooseFrom, k=1)[0]
-                    MaliciousCordinator.normalNodeDummyValue[i] = (MaliciousCordinator.attackerNodeBeforeAttackGradient[selectedRandomMaliciousKey])
-                    MaliciousCordinator.normalNodeDummyAvgDelta[i] = (MaliciousCordinator.attackerNodeAvgDelta[selectedRandomMaliciousKey])
-                    MaliciousCordinator.normalNodeDummySumDelta[i] = (MaliciousCordinator.attackerNodeSumDelta[selectedRandomMaliciousKey])
-                    MaliciousCordinator.normalNodeDummyhogAvgLen[i] = (MaliciousCordinator.attackerNodehogAvgLen[selectedRandomMaliciousKey])
+                    MaliciousCordinator.normalNodeDummyValue[i] = deepcopy(MaliciousCordinator.attackerNodeBeforeAttackWeight[selectedRandomMaliciousKey])
+                    MaliciousCordinator.normalNodeDummyAvgDelta[i] = deepcopy(MaliciousCordinator.attackerNodeAvgDelta[selectedRandomMaliciousKey])
+                    MaliciousCordinator.normalNodeDummySumDelta[i] = deepcopy(MaliciousCordinator.attackerNodeSumDelta[selectedRandomMaliciousKey])
+                    MaliciousCordinator.normalNodeDummyhogAvgLen[i] = deepcopy(MaliciousCordinator.attackerNodehogAvgLen[selectedRandomMaliciousKey])
 
             # TODO stable point 1
 
@@ -172,7 +181,7 @@ class MaliciousCordinator():
             main_normalized_sHoGs = {}
             main_full_norm_short_HoGs = []
             keys = MaliciousCordinator.attackerNodeBeforeAttackGradient.keys()
-            key = list(keys)[MaliciousCordinator.numberOfAttackerNodesInCurrentIteration-1]
+            attackerKey = list(keys)[MaliciousCordinator.numberOfAttackerNodesInCurrentIteration-1]
 
             main_short_HoGs, main_long_HoGs, main_normalized_sHoGs, main_full_norm_short_HoGs = MaliciousCordinator.collect_short_long_hogs()
 
@@ -191,11 +200,11 @@ class MaliciousCordinator():
                 numLow = {}
                 numHigh = {}
 
-                numLow, numHigh = MaliciousCordinator.get_guassian_low_and_high()
+                numLow, numHigh = MaliciousCordinator.get_guassian_low_and_high_weight()
                 
                 # for t in range(MaliciousCordinator.samplesThreshold):
                 for t in range(1):
-                    newMaliciousClient = {}
+                    newMaliciousClientWeight = {}
 
                     for p in MaliciousCordinator.model.state_dict():
                         newSelectedSampledValues = np.full_like(numLow[p], 0)
@@ -208,6 +217,11 @@ class MaliciousCordinator():
                             step = difference / MaliciousCordinator.samplesThreshold
 
                             if step !=0 and (not np.isnan(step)):
+                            # if step !=0:
+                                # print(rangeStart)
+                                # print(rangeEnd)
+                                # print(step)
+                                # print()
                                 tempRange = np.arange(rangeStart, rangeEnd, step)
                                 sampledRangeOfValues = list(tempRange)
                                 flip = np.random.choice([-1, -1])
@@ -220,7 +234,7 @@ class MaliciousCordinator():
                             else:
                                 newSelectedSampledValues[index] = value
 
-                        newMaliciousClient[p] = torch.tensor(newSelectedSampledValues)
+                        newMaliciousClientWeight[p] = torch.tensor(newSelectedSampledValues)
 
                     coordinatorNewAttacksLodge = {
                         "pre_mal_id": deepcopy(MaliciousCordinator.pre_mal_id),
@@ -233,14 +247,19 @@ class MaliciousCordinator():
                         "unreliable_ids": deepcopy(MaliciousCordinator.unreliable_ids)
                     }
 
-                    MaliciousCordinator.get_all_attacks(newMaliciousClient, key, coordinatorNewAttacksLodge, main_short_HoGs, main_long_HoGs, main_normalized_sHoGs, main_full_norm_short_HoGs)
+                    values1 = list(newMaliciousClientWeight.values())
+                    values2 = list(dict(MaliciousCordinator.attackerNodeBeforeAttackWeight[attackerKey]).values())
+                    difference = [v1 - v2 for v1, v2 in zip(values1, values2)]
+                    newMaliciousClient = dict(zip(newMaliciousClientWeight.keys(), difference))
+
+                    MaliciousCordinator.get_all_attacks(newMaliciousClient, attackerKey, coordinatorNewAttacksLodge, main_short_HoGs, main_long_HoGs, main_normalized_sHoGs, main_full_norm_short_HoGs)
 
                     # STAGE 2 - step 4: Calcualte best score
-                    listOfNumberOfClientMarkedAsMalicious[t]  = MaliciousCordinator.calculate_attacks_score(key, coordinatorNewAttacksLodge)
-                    listOfNewMaliciousClient[t] = OrderedDict(newMaliciousClient)
+                    listOfNumberOfClientMarkedAsMalicious[t]  = MaliciousCordinator.calculate_attacks_score(attackerKey, coordinatorNewAttacksLodge)
+                    listOfNewMaliciousClient[t] = OrderedDict(newMaliciousClientWeight)
                     listOfNewCoordinatorPossibleAttacks[t] = coordinatorNewAttacksLodge
 
-                    # print("key", key)
+                    # print("key", attackerKey)
                     # print("score", listOfNumberOfClientMarkedAsMalicious[t])
                     # print("t", t)
                     # print()
@@ -273,14 +292,7 @@ class MaliciousCordinator():
 
         return result
 
-    krumLamda = None
-    original_dir = None
-    vi_shape = None
-
-    e_sigma = None
-    e_mu = None
-
-    def formulate_krum_attack(client, attackType):
+    def formulate_mudhog2_attack(client, attackType):
         result = {
             "newMaliciousClient": None,
             "isNewMalicoiusClientCalculated": False,
@@ -288,12 +300,17 @@ class MaliciousCordinator():
 
         if  (
             len(MaliciousCordinator.attackerNodeBeforeAttackGradient) == MaliciousCordinator.numberOfAttackerNodesInCurrentIteration and
-            MaliciousCordinator.currentIteration>=MaliciousCordinator.minimumIterationToStartTheAttack and
+            MaliciousCordinator.currentIteration>=MaliciousCordinator.minimumIterationToStartTheAttack and 
             MaliciousCordinator.numberOfAttackerNodesInCurrentIteration>=MaliciousCordinator.minimumNumberOfMaliciousClientsThreshold
             ):
-            
+        # if  MaliciousCordinator.lastModelAccuracy>=MaliciousCordinator.lastModelAccuracyThreshold and len(MaliciousCordinator.attackerNodeBeforeAttackGradient) == MaliciousCordinator.numberOfAttackerNodesInCurrentIteration and MaliciousCordinator.currentIteration>=MaliciousCordinator.minimumIterationToStartTheAttack and MaliciousCordinator.numberOfAttackerNodesInCurrentIteration>=MaliciousCordinator.minimumNumberOfMaliciousClientsThreshold:
+        # if  MaliciousCordinator.currentIteration % 3 != 0 and len(MaliciousCordinator.attackerNodeBeforeAttackGradient) == MaliciousCordinator.numberOfAttackerNodesInCurrentIteration and MaliciousCordinator.currentIteration>=MaliciousCordinator.minimumIterationToStartTheAttack and MaliciousCordinator.numberOfAttackerNodesInCurrentIteration>=MaliciousCordinator.minimumNumberOfMaliciousClientsThreshold:
             dict1 = dict(MaliciousCordinator.attackerNodeChoosenGradientInThisIteration)
             dict2 = MaliciousCordinator.attackerNodeBeforeAttackGradient
+            dict2.update({k: v for k, v in dict1.items() if k in dict2})
+
+            dict1 = dict(MaliciousCordinator.attackerNodeChoosenWeightInThisIteration)
+            dict2 = MaliciousCordinator.attackerNodeBeforeAttackWeight
             dict2.update({k: v for k, v in dict1.items() if k in dict2})
 
             dict1 = dict(MaliciousCordinator.attackerNodeChoosenAvgDeltaInThisIteration)
@@ -318,66 +335,277 @@ class MaliciousCordinator():
             for i in range(MaliciousCordinator.numberOfClientsTraining):
                 if i not in MaliciousCordinator.attackerNodes:
                     selectedRandomMaliciousKey = random.sample(listOfMaliciousClientsIdsToChooseFrom, k=1)[0]
-                    MaliciousCordinator.normalNodeDummyValue[i] = (MaliciousCordinator.attackerNodeBeforeAttackGradient[selectedRandomMaliciousKey])
-                    MaliciousCordinator.normalNodeDummyAvgDelta[i] = (MaliciousCordinator.attackerNodeAvgDelta[selectedRandomMaliciousKey])
-                    MaliciousCordinator.normalNodeDummySumDelta[i] = (MaliciousCordinator.attackerNodeSumDelta[selectedRandomMaliciousKey])
-                    MaliciousCordinator.normalNodeDummyhogAvgLen[i] = (MaliciousCordinator.attackerNodehogAvgLen[selectedRandomMaliciousKey])
+                    MaliciousCordinator.normalNodeDummyValue[i] = deepcopy(MaliciousCordinator.attackerNodeBeforeAttackGradient[selectedRandomMaliciousKey])
+                    MaliciousCordinator.normalNodeDummyAvgDelta[i] = deepcopy(MaliciousCordinator.attackerNodeAvgDelta[selectedRandomMaliciousKey])
+                    MaliciousCordinator.normalNodeDummySumDelta[i] = deepcopy(MaliciousCordinator.attackerNodeSumDelta[selectedRandomMaliciousKey])
+                    MaliciousCordinator.normalNodeDummyhogAvgLen[i] = deepcopy(MaliciousCordinator.attackerNodehogAvgLen[selectedRandomMaliciousKey])
+
+            # TODO stable point 1
+
+            # STAGE 1: Collect long and short HoGs.
+            main_short_HoGs = {}
+            main_long_HoGs = {}
+            main_normalized_sHoGs = {}
+            main_full_norm_short_HoGs = []
+            keys = MaliciousCordinator.attackerNodeBeforeAttackGradient.keys()
+            attackerKey = list(keys)[MaliciousCordinator.numberOfAttackerNodesInCurrentIteration-1]
+
+            main_short_HoGs, main_long_HoGs, main_normalized_sHoGs, main_full_norm_short_HoGs = MaliciousCordinator.collect_short_long_hogs()
+
+            # STAGE 2: Formalate the attack
+            newMaliciousClient = {}
+            scoreOfNodesMarkedAsMalicious = 0
+            newCoordinatorPossibleAttacks = {}
+
+            listOfNewMaliciousClient = {}
+            listOfNumberOfClientMarkedAsMalicious = {}
+            listOfClientsMarkedAsMalicious = {}
+            listOfNewCoordinatorPossibleAttacks = {}
+
+            # if attackerType == AttackTypes.GuassianAttack:
+            if MaliciousCordinator.aggregationMethod == AggregationTypes.MudHog:
+                numLow = {}
+                numHigh = {}
+
+                numLow, numHigh = MaliciousCordinator.get_guassian_low_and_high()
+                
+                # for t in range(MaliciousCordinator.samplesThreshold):
+                for t in range(1):
+                    newMaliciousClientWeight = {}
+
+                    for p in MaliciousCordinator.model.state_dict():
+                        newSelectedSampledValues = np.full_like(numLow[p], 0)
+
+                        for index, value in np.ndenumerate(numLow[p]):
+                            rangeStart = value
+                            rangeEnd = numHigh[p][index]
+
+                            difference = rangeEnd - rangeStart
+                            step = difference / MaliciousCordinator.samplesThreshold
+
+                            # if step !=0 and (not np.isnan(step)):
+                            if step !=0:
+                                tempRange = np.arange(rangeStart, rangeEnd, step)
+                                sampledRangeOfValues = list(tempRange)
+                                flip = np.random.choice([-1, -1])
+                                # random.shuffle(sampledRangeOfValues)
+                                # new_value = sampledRangeOfValues[t] * flip
+                                new_value = sampledRangeOfValues[MaliciousCordinator.samplesThreshold // 2] * flip
+                                # new_value = value * flip
+                                # new_value = listOfParamters[p][len(MaliciousCordinator.attackerNodeBeforeAttackGradient)-1][index] * flip
+                                newSelectedSampledValues[index] = new_value
+                            else:
+                                newSelectedSampledValues[index] = value
+
+                        newMaliciousClientWeight[p] = torch.tensor(newSelectedSampledValues)
+
+                    coordinatorNewAttacksLodge = {
+                        "pre_mal_id": deepcopy(MaliciousCordinator.pre_mal_id),
+                        "mal_ids": deepcopy(MaliciousCordinator.mal_ids),
+                        "count_unreliable": deepcopy(MaliciousCordinator.count_unreliable),
+                        "delay_decision": deepcopy(MaliciousCordinator.delay_decision),
+                        "flip_sign_ids": deepcopy(MaliciousCordinator.flip_sign_ids),
+                        "uAtk_ids": deepcopy(MaliciousCordinator.uAtk_ids),
+                        "tAtk_ids": deepcopy(MaliciousCordinator.tAtk_ids), 
+                        "unreliable_ids": deepcopy(MaliciousCordinator.unreliable_ids)
+                    }
+
+                    # values1 = list(newMaliciousClientWeight.values())
+                    # values2 = list(dict(MaliciousCordinator.attackerNodeBeforeAttackWeight[attackerKey]).values())
+                    # difference = [v1 - v2 for v1, v2 in zip(values1, values2)]
+                    newMaliciousClient = newMaliciousClientWeight
+
+                    MaliciousCordinator.get_all_attacks(newMaliciousClient, attackerKey, coordinatorNewAttacksLodge, main_short_HoGs, main_long_HoGs, main_normalized_sHoGs, main_full_norm_short_HoGs)
+
+                    # STAGE 2 - step 4: Calcualte best score
+                    listOfNumberOfClientMarkedAsMalicious[t]  = MaliciousCordinator.calculate_attacks_score(attackerKey, coordinatorNewAttacksLodge)
+                    listOfNewMaliciousClient[t] = OrderedDict(newMaliciousClientWeight)
+                    listOfNewCoordinatorPossibleAttacks[t] = coordinatorNewAttacksLodge
+
+                    # print("key", attackerKey)
+                    # print("score", listOfNumberOfClientMarkedAsMalicious[t])
+                    # print("t", t)
+                    # print()
+
+                # print(key)
+                # print("numberOfClientMarkedAsMalicious", numberOfClientMarkedAsMalicious)
+                # print()
+
+                items = list(listOfNumberOfClientMarkedAsMalicious.items())
+                larget_value_index = 0
+                for i in range(len(items)):
+                    larget_value_index = i
+                    for j in range(i + 1, len(items)):
+                        if items[j][1] >= items[larget_value_index][1]:  # Compare values
+                            larget_value_index = j
+
+                values1 = list(listOfNewMaliciousClient[larget_value_index]).values()
+                values2 = list(dict(MaliciousCordinator.model.state_dict()).values())
+                difference = [v1 + v2 for v1, v2 in zip(values1, values2)]
+                newMaliciousClient = dict(zip(keys, difference))
+
+                result["newMaliciousClient"] = newMaliciousClient
+                result["isNewMalicoiusClientCalculated"] = True
+
+                coordinatorNewAttacksLodge = listOfNewCoordinatorPossibleAttacks[larget_value_index]
+
+                MaliciousCordinator.pre_mal_id = coordinatorNewAttacksLodge["pre_mal_id"]
+                MaliciousCordinator.mal_ids = coordinatorNewAttacksLodge["mal_ids"]
+                MaliciousCordinator.count_unreliable = coordinatorNewAttacksLodge["count_unreliable"]
+                MaliciousCordinator.delay_decision = coordinatorNewAttacksLodge["delay_decision"]
+                MaliciousCordinator.flip_sign_ids = coordinatorNewAttacksLodge["flip_sign_ids"]
+                MaliciousCordinator.uAtk_ids = coordinatorNewAttacksLodge["uAtk_ids"]
+                MaliciousCordinator.tAtk_ids = coordinatorNewAttacksLodge["tAtk_ids"]
+                MaliciousCordinator.unreliable_ids = coordinatorNewAttacksLodge["unreliable_ids"]
+
+        return result
+    
+    krumLamda = None
+    original_dir = None
+
+    vi_shape = None
+
+    e_sigma = None
+    e_mu = None
+    last_f = None
+
+    directed_dim = None
+    direction = None
+
+    def get_trimmed_attacks(grad_list, model, b=2):
+        param_list = [np.concatenate([np.array(x[xx], dtype=np.float32).reshape((-1, 1)) for xx in x], axis=0) for x in grad_list]
+        # Sort
+        sorted_array = np.sort(np.concatenate(param_list, axis=1), axis=-1)
+
+        # Trim
+        n = len(param_list)
+        m = n - 2 * b
+        trim_nd = np.mean(sorted_array[:, b:(b + m)], axis=-1, keepdims=True)
+        
+        keys = utils.getTrainableParameters(model)
+        modelData = model.state_dict()
+        key_shapes = {}
+
+        for key in keys:
+            key_shapes[key] = modelData[key].shape
+
+        Delta = deepcopy(MaliciousCordinator.emptyStates)
+        DeltaMean = {}
+        mean_flattened_cosine_mean = {}
+
+        idx = 0
+        for p in modelData:
+            param = deepcopy(modelData[p])
+            shape = modelData[p].shape
+            update_value = torch.tensor(trim_nd[idx:idx + modelData[p].numel()].reshape(shape), dtype=modelData[p].dtype, device=modelData[p].device)
+            param.data = update_value
+            idx += modelData[p].numel()
+            Delta[p] = param - modelData[p]
+
+            arr = np.array(Delta[p])
+            DeltaMean[p] = np.mean(arr, axis=0)
+
+            A = np.array(modelData[p])
+            B = np.array(DeltaMean[p])
+
+            if len(list(A.shape))==0:
+                A = np.array([modelData[p]])
+                B = np.array([DeltaMean[p]])
+
+            cosine = np.sum(A*B)/(norm(A)*norm(B))
+
+            flattened_cosine = cosine.flatten()
+            mean_flattened_cosine_mean[p] = flattened_cosine.mean()
+            
+        # print(type(Delta))
+        # print(len(Delta))
+        # print(Delta.keys())
+        # print(len(DeltaMean))
+        # print((DeltaMean))
+        # print()
+        # print(mean_flattened_cosine_mean)
+        # print()
+
+        totalCosine = 0
+        for p in mean_flattened_cosine_mean:
+            totalCosine+=mean_flattened_cosine_mean[p]
+        
+        # print(totalCosine)
+        # print()
+
+        return totalCosine
+
+    def formulate_krum_attack(client, attackType):
+        result = {
+            "newMaliciousClient": None,
+            "isNewMalicoiusClientCalculated": False,
+        }
+
+        if  (
+            len(MaliciousCordinator.attackerNodeBeforeAttackGradient) == MaliciousCordinator.numberOfAttackerNodesInCurrentIteration and
+            MaliciousCordinator.currentIteration>=MaliciousCordinator.minimumIterationToStartTheAttack
+            # MaliciousCordinator.numberOfAttackerNodesInCurrentIteration>=MaliciousCordinator.minimumNumberOfMaliciousClientsThreshold
+            ):
+
+            dict1 = dict(MaliciousCordinator.attackerNodeChoosenGradientInThisIteration)
+            dict2 = MaliciousCordinator.attackerNodeBeforeAttackGradient
+            dict2.update({k: v for k, v in dict1.items() if k in dict2})
+
+            dict1 = dict(MaliciousCordinator.attackerNodeChoosenWeightInThisIteration)
+            dict2 = MaliciousCordinator.attackerNodeBeforeAttackWeight
+            dict2.update({k: v for k, v in dict1.items() if k in dict2})
+
+            MaliciousCordinator.normalNodeDummyValue = {}
+            
+            listOfMaliciousClientsIdsToChooseFrom = list(MaliciousCordinator.attackerNodeBeforeAttackGradient.keys())
+
+            for i in range(MaliciousCordinator.numberOfClientsTraining):
+                if i not in MaliciousCordinator.attackerNodes:
+                    selectedRandomMaliciousKey = random.sample(listOfMaliciousClientsIdsToChooseFrom, k=1)[0]
+                    MaliciousCordinator.normalNodeDummyValue[i] = deepcopy(MaliciousCordinator.attackerNodeBeforeAttackGradient[selectedRandomMaliciousKey])
 
             # TODO stable point 1
 
             grad_list = []
 
-            print(MaliciousCordinator.attackerNodes)
-            # print(MaliciousCordinator.numberOfAttackerNodesAccessable)
-            # print()
-            # print(MaliciousCordinator.numberOfClientsTraining)
-            # print(len(MaliciousCordinator.attackerNodes))
-            # print(len(MaliciousCordinator.normalNodeDummyValue))
-            for i in range(MaliciousCordinator.numberOfClientsTraining):
-                temp = None
-                if i in MaliciousCordinator.attackerNodes:
-                    temp = MaliciousCordinator.attackerNodeBeforeAttackGradient[i].copy()
-                else:
-                    temp = MaliciousCordinator.normalNodeDummyValue[i].copy()
-
+            for i in range(len(MaliciousCordinator.attackerNodes)):
+                index = MaliciousCordinator.attackerNodes[i]
+                temp = deepcopy(MaliciousCordinator.attackerNodeBeforeAttackGradient[index])
                 grad_list.append(temp)
+
+            for i in range(MaliciousCordinator.numberOfClientsTraining):
+                if i not in MaliciousCordinator.attackerNodes:
+                    temp = deepcopy(MaliciousCordinator.normalNodeDummyValue[i])
+                    grad_list.append(temp)
 
             param_list = [np.concatenate([np.array(x[xx], dtype=np.float32).reshape((-1, 1)) for xx in x], axis=0) for x in grad_list]
             
             epsilon = 0.01
-            f = MaliciousCordinator.numberOfAttackerNodesInCurrentIteration
-            # print(f)
+            f = MaliciousCordinator.numberOfAttackerNodesAccessable
+            lr = 1e-2
 
-            if MaliciousCordinator.krumLamda == None:
-                # print("new")
-                lamda, original_dir, vi_shape = byzantine.dir_partial_krum_lambda(param_list, f, epsilon)
+            if MaliciousCordinator.krumLamda is None:
+                # lamda, original_dir, vi_shape = byzantine.krum_attack(param_list, lr, f)
+                lamda, original_dir, vi_shape = byzantine.dir_partial_krum_lambda(param_list, f)
                 MaliciousCordinator.krumLamda = lamda
                 MaliciousCordinator.original_dir = original_dir
                 MaliciousCordinator.vi_shape = vi_shape
             else:
-                # print("old")
                 lamda = MaliciousCordinator.krumLamda
                 original_dir = MaliciousCordinator.original_dir
                 vi_shape = MaliciousCordinator.vi_shape
 
-            # print('chosen lambda:', lamda)
-            # print('chosen original_dir:', original_dir)
-            # print('chosen vi_shape:', vi_shape)
-            # print()
-
             param_list[0] = -lamda * np.sign(original_dir)
-            for i in range(1, f):
-                random_raw = np.random.uniform(size=vi_shape) - 0.5
+            for i in range(1, len(MaliciousCordinator.attackerNodes)):
+                random_raw = np.random.uniform(size=vi_shape)
                 random_norm = np.random.uniform() * epsilon
-                randomness = (random_raw * random_norm) / np.linalg.norm(random_raw)
+                randomness = random_raw * random_norm / np.linalg.norm(random_raw)
                 param_list[i] = -lamda * np.sign(original_dir) + randomness
 
-            grad_list_recovered = []
-
-            keys = MaliciousCordinator.attackerNodeBeforeAttackGradient[0].keys()
+            keys = MaliciousCordinator.attackerNodeBeforeAttackWeight[0].keys()
             key_shapes = {}
             for key in keys:
-                key_shapes[key] = MaliciousCordinator.attackerNodeBeforeAttackGradient[0][key].shape
+                key_shapes[key] = MaliciousCordinator.attackerNodeBeforeAttackWeight[0][key].shape
 
             grad_list_recovered = []
 
@@ -389,32 +617,25 @@ class MaliciousCordinator():
                 for key in keys:
                     shape = key_shapes[key]
                     total_elements = torch.prod(torch.tensor(shape)).item()  # Use PyTorch's numel equivalent
+
+                    if total_elements == (start_idx + total_elements) - start_idx:
+                        grad_dict[key] = torch.tensor(p[start_idx:start_idx + total_elements].reshape(shape), dtype=torch.float32)
+                    else:
+                        grad_dict[key] = torch.zeros(shape, dtype=torch.float32)  # Fallback if dimensions mismatch
                     
-                    # Reshape the sliced part back into the original shape (torch.Tensor)
-                    grad_dict[key] = torch.tensor(p[start_idx:start_idx + total_elements].reshape(shape), dtype=torch.float32)
                     start_idx += total_elements  # Move the start index for the next key
                 
                 # Append the reconstructed gradient dictionary to grad_list_recovered
                 grad_list_recovered.append(grad_dict)
 
-            result["newMaliciousClient"] = grad_list_recovered[0]
+            values1 = list(grad_list_recovered[len(MaliciousCordinator.attackerNodes) - 1].values())
+            values2 = list(dict(MaliciousCordinator.model.state_dict()).values())
+            difference = [v1 + v2 for v1, v2 in zip(values1, values2)]
+            newMaliciousClient = dict(zip(keys, difference))
+
+            result["newMaliciousClient"] = newMaliciousClient
             result["isNewMalicoiusClientCalculated"] = True
 
-            # print(len(MaliciousCordinator.attackerNodeBeforeAttackGradient[0]))
-            # print(len(param_list))
-            # print(len(param_list[0]))
-            # print(len(grad_list))
-            # print(len(grad_list[0]))
-            # print(len(grad_list_recovered))
-            # print(len(grad_list_recovered[0]))
-            # print(grad_list[0]["fc3.bias"])
-            # for i in range(MaliciousCordinator.numberOfAttackerNodesInCurrentIteration):
-            #     print("i", grad_list[i]["fc3.bias"])
-            #     print("i", grad_list_recovered[i]["fc3.bias"])
-            #     print()
-            # print(grad_list[0].keys())
-            # print(grad_list_recovered[0].keys())
-            # print()
         return result
     
     def formulate_trim_attack(client, attackType):
@@ -425,92 +646,136 @@ class MaliciousCordinator():
 
         if  (
             len(MaliciousCordinator.attackerNodeBeforeAttackGradient) == MaliciousCordinator.numberOfAttackerNodesInCurrentIteration and
-            MaliciousCordinator.currentIteration>=MaliciousCordinator.minimumIterationToStartTheAttack and
-            MaliciousCordinator.numberOfAttackerNodesInCurrentIteration>=MaliciousCordinator.minimumNumberOfMaliciousClientsThreshold
+            MaliciousCordinator.currentIteration>=MaliciousCordinator.minimumIterationToStartTheAttack 
             ):
             
             dict1 = dict(MaliciousCordinator.attackerNodeChoosenGradientInThisIteration)
             dict2 = MaliciousCordinator.attackerNodeBeforeAttackGradient
             dict2.update({k: v for k, v in dict1.items() if k in dict2})
 
-            dict1 = dict(MaliciousCordinator.attackerNodeChoosenAvgDeltaInThisIteration)
-            dict2 = MaliciousCordinator.attackerNodeAvgDelta
-            dict2.update({k: v for k, v in dict1.items() if k in dict2})
-
-            dict1 = dict(MaliciousCordinator.attackerNodeChoosenSumDeltaInThisIteration)
-            dict2 = MaliciousCordinator.attackerNodeSumDelta
-            dict2.update({k: v for k, v in dict1.items() if k in dict2})
-
-            dict1 = dict(MaliciousCordinator.attackerNodeChoosenhogAvgLenInThisIteration)
-            dict2 = MaliciousCordinator.attackerNodehogAvgLen
+            dict1 = dict(MaliciousCordinator.attackerNodeChoosenWeightInThisIteration)
+            dict2 = MaliciousCordinator.attackerNodeBeforeAttackWeight
             dict2.update({k: v for k, v in dict1.items() if k in dict2})
 
             MaliciousCordinator.normalNodeDummyValue = {}
-            MaliciousCordinator.normalNodeDummyAvgDelta = {}
-            MaliciousCordinator.normalNodeDummySumDelta = {}
-            MaliciousCordinator.normalNodeDummyhogAvgLen = {}
+
+            attackerKeys = MaliciousCordinator.attackerNodeBeforeAttackWeight.keys()
+            attackerKey = list(attackerKeys)[MaliciousCordinator.numberOfAttackerNodesInCurrentIteration-1]
             
-            listOfMaliciousClientsIdsToChooseFrom = list(MaliciousCordinator.attackerNodeBeforeAttackGradient.keys())
+            listOfMaliciousClientsIdsToChooseFrom = list(MaliciousCordinator.attackerNodeBeforeAttackWeight.keys())
 
             for i in range(MaliciousCordinator.numberOfClientsTraining):
                 if i not in MaliciousCordinator.attackerNodes:
                     selectedRandomMaliciousKey = random.sample(listOfMaliciousClientsIdsToChooseFrom, k=1)[0]
-                    MaliciousCordinator.normalNodeDummyValue[i] = (MaliciousCordinator.attackerNodeBeforeAttackGradient[selectedRandomMaliciousKey])
-                    MaliciousCordinator.normalNodeDummyAvgDelta[i] = (MaliciousCordinator.attackerNodeAvgDelta[selectedRandomMaliciousKey])
-                    MaliciousCordinator.normalNodeDummySumDelta[i] = (MaliciousCordinator.attackerNodeSumDelta[selectedRandomMaliciousKey])
-                    MaliciousCordinator.normalNodeDummyhogAvgLen[i] = (MaliciousCordinator.attackerNodehogAvgLen[selectedRandomMaliciousKey])
-
-            # TODO stable point 1
+                    MaliciousCordinator.normalNodeDummyValue[i] = deepcopy(MaliciousCordinator.attackerNodeBeforeAttackWeight[selectedRandomMaliciousKey])
 
             grad_list = []
-
-            print(MaliciousCordinator.attackerNodes)
-            # print(MaliciousCordinator.numberOfAttackerNodesAccessable)
-            # print()
-            # print(MaliciousCordinator.numberOfClientsTraining)
-            # print(len(MaliciousCordinator.attackerNodes))
-            # print(len(MaliciousCordinator.normalNodeDummyValue))
-            for i in range(MaliciousCordinator.numberOfClientsTraining):
-                temp = None
-                if i in MaliciousCordinator.attackerNodes:
-                    temp = MaliciousCordinator.attackerNodeBeforeAttackGradient[i].copy()
-                else:
-                    temp = MaliciousCordinator.normalNodeDummyValue[i].copy()
-
+            
+            for i in range(len(MaliciousCordinator.attackerNodes)):
+                index = MaliciousCordinator.attackerNodes[i]
+                temp = deepcopy(MaliciousCordinator.attackerNodeBeforeAttackWeight[index])
                 grad_list.append(temp)
+
+            # for i in range(MaliciousCordinator.numberOfClientsTraining):
+            #     if i not in MaliciousCordinator.attackerNodes:
+            #         temp = deepcopy(MaliciousCordinator.normalNodeDummyValue[i])
+            #         grad_list.append(temp)
 
             param_list = [np.concatenate([np.array(x[xx], dtype=np.float32).reshape((-1, 1)) for xx in x], axis=0) for x in grad_list]
             
-            f = MaliciousCordinator.numberOfAttackerNodesInCurrentIteration
-            # print(f)
+            f = MaliciousCordinator.numberOfAttackerNodesAccessable
 
-            if MaliciousCordinator.e_sigma == None:
-                # print("new")
-                e_mu, e_sigma, vi_shape = byzantine.partial_trim(param_list, f)
-                MaliciousCordinator.e_mu = e_mu
-                MaliciousCordinator.e_sigma = e_sigma
-                MaliciousCordinator.vi_shape = vi_shape
-            else:
-                # print("old")
-                e_mu = MaliciousCordinator.e_mu
-                e_sigma = MaliciousCordinator.e_sigma
-                vi_shape = MaliciousCordinator.vi_shape
+            e_mu, e_sigma, vi_shape = byzantine.gaussian_attack(param_list, f, 5)
 
-            # print('chosen lambda:', lamda)
-            # print('chosen original_dir:', original_dir)
-            # print('chosen vi_shape:', vi_shape)
+            # if MaliciousCordinator.last_f is None or MaliciousCordinator.last_f >= f:
+            #     e_mu, e_sigma, vi_shape = byzantine.gaussian_attack(param_list, f)
+            #     MaliciousCordinator.last_f = f
+            # else:
+            #     e_mu = MaliciousCordinator.e_mu
+            #     e_sigma = MaliciousCordinator.e_sigma
+            #     vi_shape = MaliciousCordinator.vi_shape
+
+            # directed_dim, direction, vi_shape = byzantine.attack_trim(param_list, f)
+            
+            # # if  MaliciousCordinator.direction is None:
+            # if  False or MaliciousCordinator.e_mu is None:
+            #     # print("new")
+            #     e_mu, e_sigma, vi_shape = byzantine.gaussian_attack(param_list, f)
+            #     MaliciousCordinator.e_mu = e_mu
+            #     MaliciousCordinator.e_sigma = e_sigma
+            #     MaliciousCordinator.vi_shape = vi_shape
+
+            #     # print(MaliciousCordinator.currentIteration)
+            #     # print(e_mu)
+            #     # print(e_sigma)
+            #     # print(vi_shape)
+            #     # print()
+
+            #     # directed_dim, direction, vi_shape = byzantine.attack_trim(param_list, f)
+            #     # MaliciousCordinator.direction = direction
+            #     # MaliciousCordinator.directed_dim = directed_dim
+            #     # MaliciousCordinator.vi_shape = vi_shape
+
+            # else:
+            #     # print("old")
+            #     e_mu = MaliciousCordinator.e_mu
+            #     e_sigma = MaliciousCordinator.e_sigma
+            #     vi_shape = MaliciousCordinator.vi_shape
+            #     # direction = MaliciousCordinator.direction
+            #     # directed_dim = MaliciousCordinator.directed_dim
+
+            # print(e_mu)
+            # print(e_sigma)
             # print()
 
-            for i in range(f):
-                # apply attack to compromised worker devices with randomness
-                param_list[i] = (e_mu - np.multiply(e_sigma, np.sign(e_mu)) * 3.5).reshape(vi_shape)
+            for i in range(len(MaliciousCordinator.attackerNodes)):
+                # Apply attack to compromised worker devices with randomness
+            #     param_list[i] = (e_mu - (e_sigma * np.sign(e_mu) * 3.5)).reshape(vi_shape)
 
-            grad_list_recovered = []
+                # original = np.asarray(param_list[i])
+                # norm = np.linalg.norm(original)
+                # new_rand = np.random.normal(e_mu, e_sigma, size=original.shape)
+                # rescaled = new_rand * (norm / np.linalg.norm(new_rand))
+                # param_list[i] = rescaled
 
-            keys = MaliciousCordinator.attackerNodeBeforeAttackGradient[0].keys()
+                original = np.asarray(param_list[i])
+                attack_noise = np.random.normal(e_mu, e_sigma, size=original.shape)
+                param_list[i] = original + attack_noise * 1.0
+                # param_list[i] = attack_noise * 1.0
+                # print("noise", attack_noise)
+                # print("noise", len(attack_noise))
+                # print("noise", len(param_list[i]))
+
+                # print(param_list[i]- temp)
+
+                # param_list[i] = -attack_noise 
+
+                # scaling_factor = 10.0  # Amplifies the attack's magnitude
+                
+                # # Broadcasting fix
+                # expanded_mu = e_mu.reshape(-1, 1)
+                # expanded_sigma = (e_sigma * scaling_factor).reshape(-1, 1)
+
+                # # Add randomness and increase scaling
+                # random_fluctuation = np.random.uniform(0.9, 1.1, size=original.shape)
+                # new_rand = np.random.normal(expanded_mu, expanded_sigma * 5, size=original.shape) * random_fluctuation
+
+                # # Remove rescaling to preserve the attack strength
+                # param_list[i] = new_rand
+
+            # for i in range(len(MaliciousCordinator.attackerNodes)):
+            #     # random_12 = 2 + 1e-8
+            #     random_12 = 5*np.random.uniform(size=vi_shape).astype(np.float32)
+            #     param_list[i] = directed_dim * np.where(direction * directed_dim > 0, 1 / random_12, random_12)
+            #     # print(vi_shape)
+            #     # print(param_list[i].shape)
+            #     # print(random_12.shape)
+
+
+            keys = MaliciousCordinator.attackerNodeBeforeAttackWeight[0].keys()
             key_shapes = {}
             for key in keys:
-                key_shapes[key] = MaliciousCordinator.attackerNodeBeforeAttackGradient[0][key].shape
+                key_shapes[key] = MaliciousCordinator.attackerNodeBeforeAttackWeight[0][key].shape
 
             grad_list_recovered = []
 
@@ -522,32 +787,31 @@ class MaliciousCordinator():
                 for key in keys:
                     shape = key_shapes[key]
                     total_elements = torch.prod(torch.tensor(shape)).item()  # Use PyTorch's numel equivalent
+
+                    if total_elements == (start_idx + total_elements) - start_idx:
+                        grad_dict[key] = torch.tensor(p[start_idx:start_idx + total_elements].reshape(shape), dtype=torch.float32)
+                    else:
+                        grad_dict[key] = torch.zeros(shape, dtype=torch.float32)  # Fallback if dimensions mismatch
                     
-                    # Reshape the sliced part back into the original shape (torch.Tensor)
-                    grad_dict[key] = torch.tensor(p[start_idx:start_idx + total_elements].reshape(shape), dtype=torch.float32)
+                    # # Reshape the sliced part back into the original shape (torch.Tensor)
+                    # grad_dict[key] = torch.tensor(p[start_idx:start_idx + total_elements].reshape(shape), dtype=torch.float32)
                     start_idx += total_elements  # Move the start index for the next key
                 
                 # Append the reconstructed gradient dictionary to grad_list_recovered
                 grad_list_recovered.append(grad_dict)
 
-            result["newMaliciousClient"] = grad_list_recovered[0]
+            # result["newMaliciousClient"] = OrderedDict(grad_list_recovered[f-1])
+            # result["isNewMalicoiusClientCalculated"] = True
+
+            values1 = list(grad_list_recovered[len(MaliciousCordinator.attackerNodes) - 1].values())
+            values2 = list(dict(MaliciousCordinator.model.state_dict()).values())
+            difference = [v1 + v2 for v1, v2 in zip(values1, values2)]
+            newMaliciousClient = dict(zip(keys, difference))
+
+            # result["newMaliciousClient"] = (newMaliciousClient)
+            result["newMaliciousClient"] = OrderedDict(grad_list_recovered[len(MaliciousCordinator.attackerNodes) - 1])
             result["isNewMalicoiusClientCalculated"] = True
 
-            # print(len(MaliciousCordinator.attackerNodeBeforeAttackGradient[0]))
-            # print(len(param_list))
-            # print(len(param_list[0]))
-            # print(len(grad_list))
-            # print(len(grad_list[0]))
-            # print(len(grad_list_recovered))
-            # print(len(grad_list_recovered[0]))
-            # print(grad_list[0]["fc3.bias"])
-            # for i in range(MaliciousCordinator.numberOfAttackerNodesInCurrentIteration):
-            #     print("i", grad_list[i]["fc3.bias"])
-            #     print("i", grad_list_recovered[i]["fc3.bias"])
-            #     print()
-            # print(grad_list[0].keys())
-            # print(grad_list_recovered[0].keys())
-            # print()
         return result
 
     def get_all_attacks(newMaliciousClient, key, coordinatorNewAttacksLodge, main_short_HoGs, main_long_HoGs, main_normalized_sHoGs, main_full_norm_short_HoGs):
@@ -594,6 +858,55 @@ class MaliciousCordinator():
 
         return flip_sign_id, uAtk_id, offset_tAtk_id1, unrliable_clients
 
+    def get_guassian_low_and_high_weight():
+        listOfParamters = {}
+        listOfParamtersMean = {}
+        listOfParamtersStandardDivation = {}
+
+        numLow = {}
+        numHigh = {}
+
+        trainable_parameter = utils.getTrainableParameters(MaliciousCordinator.model)
+        modelData = MaliciousCordinator.model.state_dict()
+
+        # newMaliciousClient = {}
+
+        for p in MaliciousCordinator.model.state_dict():
+            if p not in trainable_parameter:
+                continue
+            listOfParamters[p] = []
+            listOfParamtersMean[p] = []
+            listOfParamtersStandardDivation[p] = []
+
+            for i in MaliciousCordinator.attackerNodeBeforeAttackWeight:
+                malicoiusClient = deepcopy(MaliciousCordinator.attackerNodeBeforeAttackWeight[i])
+                listOfParamters[p].append(malicoiusClient[p])
+
+            arr = np.array(listOfParamters[p])
+            listOfParamtersMean[p] = np.mean(arr, axis=0)
+            listOfParamtersStandardDivation[p] = np.std(arr, axis=0)
+
+            A = np.array(modelData[p])
+            B = np.array(listOfParamtersMean[p])
+
+            if len(list(A.shape))==0:
+                A = np.array([modelData[p]])
+                B = np.array([listOfParamtersMean[p]])
+
+            cosine = np.sum(A*B)/(norm(A)*norm(B))
+
+            flattened_cosine = cosine.flatten()
+            mean_flattened_cosine = flattened_cosine.mean()
+
+            numLow[p] = np.array(listOfParamtersMean[p]) - (4 * np.array(listOfParamtersStandardDivation[p]))
+            numHigh[p] = np.array(listOfParamtersMean[p]) - (3 * np.array(listOfParamtersStandardDivation[p]))
+
+            if mean_flattened_cosine < 0:
+                numLow[p] = np.array(listOfParamtersMean[p]) + (3 * np.array(listOfParamtersStandardDivation[p]))
+                numHigh[p] = np.array(listOfParamtersMean[p]) + (4 * np.array(listOfParamtersStandardDivation[p]))
+
+        return numLow, numHigh
+
     def get_guassian_low_and_high():
         listOfParamters = {}
         listOfParamtersMean = {}
@@ -615,7 +928,7 @@ class MaliciousCordinator():
             listOfParamtersStandardDivation[p] = []
 
             for i in MaliciousCordinator.attackerNodeBeforeAttackGradient:
-                malicoiusClient = (MaliciousCordinator.attackerNodeBeforeAttackGradient[i])
+                malicoiusClient = deepcopy(MaliciousCordinator.attackerNodeBeforeAttackGradient[i])
                 listOfParamters[p].append(malicoiusClient[p])
 
             arr = np.array(listOfParamters[p])
@@ -728,16 +1041,25 @@ class MaliciousCordinator():
                 n = MaliciousCordinator.normalNodeDummyhogAvgLen[k]
                 avgValue = OrderedDict({key: (((n* avgDect1[key]) + avgDect2[key]) / (n+1)) for key in avgDect1})
                 sHoG = torch.cat([v.flatten() for v in avgValue.values()]).detach().cpu().numpy()
+                # if np.any(np.isnan(sHoG)):
+                #     print("Data contains NaN values, consider preprocessing.")
+                #     print("short ", k)
+                #     print()
                 short_HoGs[k] = sHoG
                 # longHoGs
                 sumDect1 = MaliciousCordinator.normalNodeDummyValue[k]
                 sumDect2 = MaliciousCordinator.normalNodeDummySumDelta[k]
                 sumValue = OrderedDict({key: (sumDect1[key] + sumDect2[key]) for key in sumDect1})
-                long_HoGs[k] = torch.cat([v.flatten() for v in sumValue.values()]).detach().cpu().numpy()
+                lHog = torch.cat([v.flatten() for v in sumValue.values()]).detach().cpu().numpy()
+                long_HoGs[k] = lHog
+
+                # if np.any(np.isnan(lHog)):
+                #     print("Data contains NaN values, consider preprocessing.")
+                #     print("long ", k)
+                #     print()
 
                 L2_sHoG = np.linalg.norm(sHoG)
                 full_norm_short_HoGs.append(sHoG/L2_sHoG)
-                short_HoGs[k] = sHoG
 
                 # Exclude the firmed malicious clients
                 if k not in MaliciousCordinator.mal_ids:
@@ -772,6 +1094,11 @@ class MaliciousCordinator():
                 if i in short_HoGs:
                     short_HoGs.pop(i)
         id_sHoGs, value_sHoGs = np.array(list(short_HoGs.keys())), np.array(list(short_HoGs.values()))
+
+        value_sHoGs = np.clip(value_sHoGs, -1e10, 1e10)
+        if np.any(np.isnan(value_sHoGs)):
+            imputer = SimpleImputer(strategy='mean')  # Other options: 'median', 'most_frequent', 'constant'
+            value_sHoGs = imputer.fit_transform(value_sHoGs)
 
         cluster_sh = DBSCAN(eps=MaliciousCordinator.dbscan_eps, n_jobs=-1,
             min_samples=MaliciousCordinator.dbscan_min_samples).fit(value_sHoGs)
@@ -811,6 +1138,12 @@ class MaliciousCordinator():
                     long_HoGs.pop(i)
         id_lHoGs = np.array(list(long_HoGs.keys()))
         value_lHoGs = np.array(list(long_HoGs.values()))
+
+        value_lHoGs = np.clip(value_lHoGs, -1e10, 1e10)
+
+        if np.any(np.isnan(value_lHoGs)):
+            imputer = SimpleImputer(strategy='mean')  # Other options: 'median', 'most_frequent', 'constant'
+            value_lHoGs = imputer.fit_transform(value_lHoGs)
 
         cluster_lh1 = KMeans(n_clusters=2, random_state=0).fit(value_lHoGs)
         offset_tAtk_id1 = MaliciousCordinator.find_minority_id(cluster_lh1)

@@ -190,12 +190,16 @@ for iteration in range(num_of_iterations):
     num_of_bengin_marked_as_malicious = 0
     num_of_malicoius_marked_as_malicious = 0
 
+    
+    selected_clients_labels_int = [int(x) for x in selected_clients_labels]
+    bengin_marked_as_malicious_nodes = []
+
     for i in range(num_clients):
-        if i not in list_uatk_flip_sign or i not in list_uatk_add_noise or i not in list_tatk_label_flipping or i not in list_tatk_multi_label_flipping and i not in selected_clients_labels:
-            num_of_bengin_marked_as_malicious+1
+        if (i not in list_uatk_flip_sign) and (i not in list_uatk_add_noise) and (i not in list_tatk_label_flipping) and (i not in list_tatk_multi_label_flipping) and (i not in selected_clients_labels_int):
+            num_of_bengin_marked_as_malicious+=1
+            bengin_marked_as_malicious_nodes.append(i)
 
     for s in (set(list_uatk_flip_sign) | set(list_uatk_add_noise) | set(list_tatk_label_flipping) | set(list_tatk_multi_label_flipping)):
-        selected_clients_labels_int = [int(x) for x in selected_clients_labels]
         if s in selected_clients_labels_int:
             num_of_malicious_marked_as_bengin+=1
         else:
