@@ -73,7 +73,7 @@ def test_dataloader(test_batch_size):
 
 
 if __name__ == '__main__':
-    from torchinfo import summary
+    from torchsummary import summary
 
     print("#Initialize a network")
     net = Net()
