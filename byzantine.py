@@ -125,13 +125,13 @@ def dir_partial_krum_lambda(v, f):
         for i in range(v_attack_number):
             v_simulation.append(-lamda * np.sign(original_dir))
 
-        min_idx, _ = krum2(v_simulation, v_attack_number)
+        min_idx, _ = krum(v_simulation, v_attack_number)
         stop_threshold = 0.00002
         while min_idx < f and lamda > stop_threshold:
             lamda /= 2
             for i in range(f, f + v_attack_number):
                 v_simulation[i] = -lamda * np.sign(original_dir)
-            min_idx, _ = krum2(v_simulation, v_attack_number)
+            min_idx, _ = krum(v_simulation, v_attack_number)
 
         v_attack_number += 1
 

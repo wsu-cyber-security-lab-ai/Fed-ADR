@@ -66,7 +66,7 @@ def main(args):
         Net = mnist.Net
         criterion = F.cross_entropy
     elif args.dataset == 'cifar':
-        from tasks import cifar10 as cifar
+        from tasks import cifar as cifar
         trainData = cifar.train_dataloader(args.num_clients,
             loader_type=args.loader_type, path=args.loader_path, store=False)
         testData = cifar.test_dataloader(args.test_batch_size)
@@ -227,6 +227,8 @@ def main(args):
     writer.add_scalar('test/loss', loss, steps)
     writer.add_scalar('test/accuracy', accuracy, steps)
 
+    writer.add_scalar('test/label_malicious_marked_as_bengin', 0, 0)
+    writer.add_scalar('test/multi_label_malicious_marked_as_bengin', 0, 0)
     writer.add_scalar('test/num_of_bengin_marked_as_malicious', 0, 0)
     writer.add_scalar('test/num_of_malicious_marked_as_bengin', 0, 0)
     writer.add_scalar('test/num_of_malicoius_marked_as_malicious', 0, 0)
@@ -240,7 +242,7 @@ def main(args):
         writer.add_scalar('test/loss_backdoor', loss, steps)
         writer.add_scalar('test/backdoor_success_rate', accuracy, steps)
 
-    
+    set_of_all_attacks = (set(list_uatk_flip_sign) | set(list_uatk_add_noise) | set(list_tatk_label_flipping) | set(list_tatk_multi_label_flipping))
 
     for j in range(args.epochs):
         steps = j + 1
@@ -262,6 +264,66 @@ def main(args):
 
         selected_clients_labels_int = [int(x.cid) for x in server.normal_clients]
 
+        bengin_marked_as_malicious_nodes = []
+        label_malicious_marked_as_bengin = 0
+        multi_label_malicious_marked_as_bengin = 0
+
+        for i in range(args.num_clients):
+            if (i not in list_uatk_flip_sign) and (i not in list_uatk_add_noise) and (i not in list_tatk_label_flipping) and (i not in list_tatk_multi_label_flipping) and (i not in selected_clients_labels_int):
+                num_of_bengin_marked_as_malicious+=1
+                bengin_marked_as_malicious_nodes.append(i)
+
+        for s in set_of_all_attacks:
+            if s in selected_clients_labels_int:
+                num_of_malicious_marked_as_bengin+=1
+                if s in set(list_tatk_label_flipping):
+                    label_malicious_marked_as_bengin+=1
+                if s in set(list_tatk_multi_label_flipping):
+                    multi_label_malicious_marked_as_bengin+=1
+            else:
+                num_of_malicoius_marked_as_malicious+=1
+
+        writer.add_scalar('test/loss', loss, steps)
+        writer.add_scalar('test/accuracy', accuracy, steps)
+
+        # Check and calculate label_malicious_marked_as_bengin_percentage
+        if len(set(list_tatk_label_flipping)) > 0:
+            label_malicious_marked_as_bengin_percentage = (label_malicious_marked_as_bengin / len(set(list_tatk_label_flipping))) * 100
+        else:
+            label_malicious_marked_as_bengin_percentage = 0  # Or any other value you want
+
+        # Check and calculate multi_label_malicious_marked_as_bengin_percentage
+        if len(set(list_tatk_multi_label_flipping)) > 0:
+            multi_label_malicious_marked_as_bengin_percentage = (multi_label_malicious_marked_as_bengin / len(set(list_tatk_multi_label_flipping))) * 100
+        else:
+            multi_label_malicious_marked_as_bengin_percentage = 0  # Or any other value you want
+
+        # Check and calculate num_of_bengin_marked_as_malicious_percentage
+        if (args.num_clients - len(set_of_all_attacks)) > 0:
+            num_of_bengin_marked_as_malicious_percentage = (num_of_bengin_marked_as_malicious / (args.num_clients - len(set_of_all_attacks))) * 100
+        else:
+            num_of_bengin_marked_as_malicious_percentage = 0  # Or any other value you want
+
+        # Check and calculate num_of_malicious_marked_as_bengin_percentage
+        if len(set_of_all_attacks) > 0:
+            num_of_malicious_marked_as_bengin_percentage = (num_of_malicious_marked_as_bengin / len(set_of_all_attacks)) * 100
+        else:
+            num_of_malicious_marked_as_bengin_percentage = 0  # Or any other value you want
+
+        # Check and calculate num_of_malicoius_marked_as_malicious_percentage
+        if len(set_of_all_attacks) > 0:
+            num_of_malicoius_marked_as_malicious_percentage = (num_of_malicoius_marked_as_malicious / len(set_of_all_attacks)) * 100
+        else:
+            num_of_malicoius_marked_as_malicious_percentage = 0  # Or any other value you want
+
+
+        
+        writer.add_scalar('test/label_malicious_marked_as_bengin', label_malicious_marked_as_bengin_percentage, steps)
+        writer.add_scalar('test/multi_label_malicious_marked_as_bengin', multi_label_malicious_marked_as_bengin_percentage, steps)
+        writer.add_scalar('test/num_of_bengin_marked_as_malicious', num_of_bengin_marked_as_malicious_percentage, steps)
+        writer.add_scalar('test/num_of_malicious_marked_as_bengin', num_of_malicious_marked_as_bengin_percentage, steps)
+        writer.add_scalar('test/num_of_malicoius_marked_as_malicious', num_of_malicoius_marked_as_malicious_percentage, steps)
+
         # print("iteration result")
         # print("set(list_uatk_flip_sign)", set(list_uatk_flip_sign))
         # print("set(list_uatk_add_noise)", set(list_uatk_add_noise))
@@ -274,31 +336,20 @@ def main(args):
         # print(args.num_clients)
         # print()
 
-        bengin_marked_as_malicious_nodes = []
-
-        for i in range(args.num_clients):
-            if (i not in list_uatk_flip_sign) and (i not in list_uatk_add_noise) and (i not in list_tatk_label_flipping) and (i not in list_tatk_multi_label_flipping) and (i not in selected_clients_labels_int):
-                num_of_bengin_marked_as_malicious+=1
-                bengin_marked_as_malicious_nodes.append(i)
-
-        for s in (set(list_uatk_flip_sign) | set(list_uatk_add_noise) | set(list_tatk_label_flipping) | set(list_tatk_multi_label_flipping)):
-            if s in selected_clients_labels_int:
-                num_of_malicious_marked_as_bengin+=1
-            else:
-                num_of_malicoius_marked_as_malicious+=1
-
-        writer.add_scalar('test/loss', loss, steps)
-        writer.add_scalar('test/accuracy', accuracy, steps)
-
         # print("bengin_marked_as_malicious_nodes", bengin_marked_as_malicious_nodes)
         # print("num_of_bengin_marked_as_malicious", num_of_bengin_marked_as_malicious)
         # print("num_of_malicious_marked_as_bengin", num_of_malicious_marked_as_bengin)
-        # print("num_of_malicoius_marked_as_malicious", num_of_malicoius_marked_as_malicious)
+        # print("label_malicious_marked_as_bengin", label_malicious_marked_as_bengin)
+        # print("multi_label_malicious_marked_as_bengin", multi_label_malicious_marked_as_bengin)
         # print()
 
-        writer.add_scalar('test/num_of_bengin_marked_as_malicious', num_of_bengin_marked_as_malicious, steps)
-        writer.add_scalar('test/num_of_malicious_marked_as_bengin', num_of_malicious_marked_as_bengin, steps)
-        writer.add_scalar('test/num_of_malicoius_marked_as_malicious', num_of_malicoius_marked_as_malicious, steps)
+
+        # print("label_malicious_marked_as_bengin_percentage", label_malicious_marked_as_bengin_percentage)
+        # print("multi_label_malicious_marked_as_bengin_percentage", multi_label_malicious_marked_as_bengin_percentage)
+        # print("num_of_bengin_marked_as_malicious_percentage", num_of_bengin_marked_as_malicious_percentage)
+        # print("num_of_malicious_marked_as_bengin_percentage", num_of_malicious_marked_as_bengin_percentage)
+        # print("num_of_malicoius_marked_as_malicious_percentage", num_of_malicoius_marked_as_malicious_percentage)
+        # print()
 
         if args.attacks and 'BACKDOOR' in args.attacks.upper():
             if 'SEMANTIC' in args.attacks.upper():

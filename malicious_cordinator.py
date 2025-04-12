@@ -194,6 +194,8 @@ class MaliciousCordinator():
             listOfNumberOfClientMarkedAsMalicious = {}
             listOfClientsMarkedAsMalicious = {}
             listOfNewCoordinatorPossibleAttacks = {}
+            
+            trainable_parameter = utils.getTrainableParameters(MaliciousCordinator.model)
 
             # if attackerType == AttackTypes.GuassianAttack:
             if MaliciousCordinator.aggregationMethod == AggregationTypes.MudHog:
@@ -207,6 +209,8 @@ class MaliciousCordinator():
                     newMaliciousClientWeight = {}
 
                     for p in MaliciousCordinator.model.state_dict():
+                        if p not in trainable_parameter:
+                            continue
                         newSelectedSampledValues = np.full_like(numLow[p], 0)
 
                         for index, value in np.ndenumerate(numLow[p]):
