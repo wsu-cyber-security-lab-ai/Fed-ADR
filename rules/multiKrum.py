@@ -37,6 +37,7 @@ def getKrum(input):
     krum = input[:, :, [i_star]]
     # Multi-Krum
     mkrum = input[:, :, nbh[:, i_star, :].view(-1)].mean(2, keepdims=True)
+    print("i_star", i_star)
     return krum, mkrum
 
 class Net(nn.Module):

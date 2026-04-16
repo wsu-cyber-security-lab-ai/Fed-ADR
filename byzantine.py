@@ -9,6 +9,8 @@ import numpy as np
 from utils import utils
 import torch
 
+import cupy as cp
+
 # def no_byz(v, f):
 #     return v
 
@@ -55,16 +57,27 @@ def attack_trim(v, f):
     
     return directed_dim, direction, vi_shape
 
-def gaussian_attack(v, f, scale_factor=5.0):
-    vi_shape = v[0].shape
-    adv_grads = np.concatenate(v, axis=1)
+# def gaussian_attack(v, f, scale_factor=5.0):
+#     vi_shape = v[0].shape
+#     adv_grads = np.concatenate(v, axis=1)
     
-    e_mu = np.mean(adv_grads, axis=1, keepdims=True)
-    # Increase attack strength with scale_factor
-    e_sigma = scale_factor * np.std(adv_grads, axis=1, keepdims=True)
+#     e_mu = np.mean(adv_grads, axis=1, keepdims=True)
+#     # Increase attack strength with scale_factor
+#     e_sigma = scale_factor * np.std(adv_grads, axis=1, keepdims=True)
+
+#     return e_mu, e_sigma, vi_shape
+
+def gaussian_attack(v, f, scale_factor=5.0):
+    # Convert NumPy arrays to CuPy arrays
+    v = [cp.asarray(x) for x in v]
+
+    vi_shape = v[0].shape
+    adv_grads = cp.concatenate(v, axis=1)
+
+    e_mu = cp.mean(adv_grads, axis=1, keepdims=True)
+    e_sigma = scale_factor * cp.std(adv_grads, axis=1, keepdims=True)
 
     return e_mu, e_sigma, vi_shape
-
 
 def score(gradient, v, f):
     num_neighbours = int(v.shape[1] - 2 - f)
@@ -72,17 +85,70 @@ def score(gradient, v, f):
     return np.sum(sorted_distance[1:(1+num_neighbours)])
 
 
+# def krum(v, f):
+#     # if len(v) - f - 2 <= 0:
+#     #     f = len(v) - 3
+#     if len(v[0].shape) > 1:
+#         v_tran = np.concatenate(v, axis=1)
+#     else:
+#         v_tran = v
+#     scores = np.array([score(gradient, v_tran, f) for gradient in v])
+#     min_idx = int(np.argmin(scores, axis=0))
+#     krum_nd = np.reshape(v[min_idx], (-1,))
+#     return min_idx, krum_nd
+
 def krum(v, f):
-    # if len(v) - f - 2 <= 0:
-    #     f = len(v) - 3
+    start_time = time.time()
+    # Move everything to GPU
+    # v = [cp.asarray(x) for x in v]
+
     if len(v[0].shape) > 1:
-        v_tran = np.concatenate(v, axis=1)
+        v_tran = cp.concatenate(v, axis=1)
     else:
-        v_tran = v
-    scores = np.array([score(gradient, v_tran, f) for gradient in v])
-    min_idx = int(np.argmin(scores, axis=0))
-    krum_nd = np.reshape(v[min_idx], (-1,))
+        v_tran = cp.stack(v)  # stack for 1D arrays
+    
+    scores = cp.array([score(gradient, v_tran, f) for gradient in v])
+
+    min_idx = int(cp.argmin(scores, axis=0).get())  # .get() to bring result back to CPU
+    krum_nd = cp.reshape(v[min_idx], (-1,))
+
+    end_time = time.time()  # End timer
+    print(f"Time spent in my_function: {end_time - start_time:.4f} seconds")
+
     return min_idx, krum_nd
+
+import cupy as cp
+import time
+
+def fast_krum_memory_efficient(v, f):
+    if len(v[0].shape) > 1:
+        v_tran = cp.concatenate(v, axis=1).T
+    else:
+        v_tran = cp.stack(v)
+
+    num_grads = v_tran.shape[0]
+
+    # 1. Precompute squared norms
+    norms = cp.sum(v_tran ** 2, axis=1)  # shape (num_grads,)
+
+    # 2. Compute pairwise distance matrix using (a-b)^2 = ||a||^2 + ||b||^2 - 2<a,b>
+    dists = norms[:, None] + norms[None, :] - 2 * (v_tran @ v_tran.T)  # (num_grads, num_grads)
+
+    # Numerical stability fix: clip small negatives to zero
+    dists = cp.maximum(dists, 0)
+
+    # 3. For each gradient, sort distances to others
+    sorted_distances = cp.sort(dists, axis=1)
+
+    # 4. Sum the closest (n - f - 2) distances
+    num_neigh = num_grads - f - 2
+    scores = cp.sum(sorted_distances[:, 1:1+num_neigh], axis=1)  # skip self-distance at index 0
+
+    min_idx = int(cp.argmin(scores))
+    krum_nd = cp.reshape(v[min_idx], (-1,))
+
+    return min_idx, krum_nd
+
 
 def krum2(clients, f):
 
@@ -109,34 +175,81 @@ def krum2(clients, f):
 
     # (11, 81194, 1)
 
-def dir_partial_krum_lambda(v, f):
-    vi_shape = v[0].shape
+# def dir_partial_krum_lambda(v, f):
+#     start_time = time.time()
+#     print(start_time)
+#     vi_shape = v[0].shape
 
-    v_tran = np.transpose(np.concatenate(v, axis=1))[:f].copy()
-    original_dir = np.mean(v_tran, axis=0).reshape(vi_shape)
+#     v_tran = np.transpose(np.concatenate(v, axis=1))[:f].copy()
+#     original_dir = np.mean(v_tran, axis=0).reshape(vi_shape)
+#     v_attack_number = 1
+
+#     lamda = 5.0
+
+#     while v_attack_number < f:
+#         lamda = 5.0
+#         v_simulation = [each_v.copy() for each_v in v[:f]]
+
+#         for i in range(v_attack_number):
+#             v_simulation.append(-lamda * np.sign(original_dir))
+
+#         min_idx, _ = krum(v_simulation, v_attack_number)
+#         stop_threshold = 0.00002
+#         while min_idx < f and lamda > stop_threshold:
+#             lamda /= 2
+#             for i in range(f, f + v_attack_number):
+#                 v_simulation[i] = -lamda * np.sign(original_dir)
+#             min_idx, _ = krum(v_simulation, v_attack_number)
+
+#         v_attack_number += 1
+
+#         if min_idx >= f:
+#             break
+
+#     end_time = time.time()  # End timer
+#     print(f"Time spent in my_function: {end_time - start_time:.4f} seconds")
+#     return lamda, original_dir, vi_shape
+
+import cupy as cp
+
+def dir_partial_krum_lambda(v, f):
+    start_time = time.time()
+    vi_shape = v[0].shape
+    v = [cp.asarray(x) for x in v]  # Convert each numpy array to cupy
+    v_concat = cp.concatenate(v, axis=1)
+    v_tran = cp.transpose(v_concat)[:f].copy()
+    original_dir = cp.mean(v_tran, axis=0).reshape(vi_shape)
     v_attack_number = 1
 
-    lamda = 5.0
+    # lamda = 5.0 # mnist and fashion mnist
+    lamda = 50.0 # cifar
 
     while v_attack_number < f:
-        lamda = 5.0
+        # lamda = 5.0 # mnist and fashion mnist
+        lamda = 50.0 # cifar
         v_simulation = [each_v.copy() for each_v in v[:f]]
 
-        for i in range(v_attack_number):
-            v_simulation.append(-lamda * np.sign(original_dir))
+        for _ in range(v_attack_number):
+            v_simulation.append(-lamda * cp.sign(original_dir))
 
-        min_idx, _ = krum(v_simulation, v_attack_number)
+        min_idx, _ = fast_krum_memory_efficient(v_simulation, v_attack_number)
         stop_threshold = 0.00002
+
         while min_idx < f and lamda > stop_threshold:
             lamda /= 2
+            attack_vector = -lamda * cp.sign(original_dir)
+
             for i in range(f, f + v_attack_number):
-                v_simulation[i] = -lamda * np.sign(original_dir)
-            min_idx, _ = krum(v_simulation, v_attack_number)
+                v_simulation[i] = attack_vector
+
+            min_idx, _ = fast_krum_memory_efficient(v_simulation, v_attack_number)
 
         v_attack_number += 1
 
         if min_idx >= f:
             break
+    end_time = time.time()  # End timer
+    print(f"Time spent in my_function: {end_time - start_time:.4f} seconds")
     return lamda, original_dir, vi_shape
 
 def krum_attack(v, lr, f):

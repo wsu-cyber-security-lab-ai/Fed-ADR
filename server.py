@@ -2,6 +2,7 @@ from __future__ import print_function
 
 from copy import deepcopy
 
+from sklearn.decomposition import TruncatedSVD
 import torch
 import torch.nn.functional as F
 import logging, coloredlogs
@@ -24,9 +25,13 @@ from sklearn.preprocessing import OneHotEncoder
 import math
 from clients import *
 import statistics
-from malicious_cordinator import MaliciousCordinator
+from malicious_cordinator_second_version import MaliciousCordinatorSecondVersion
 from aggregation_types import AggregationTypes
 from sklearn.impute import SimpleImputer
+
+import cupy as cp
+from cuml.cluster import DBSCAN as cuDBSCAN
+from collections import Counter
 
 def find_separate_point(d):
     # d should be flatten and np or list
@@ -68,7 +73,9 @@ def find_minority_id(clf):
     return atk_id
 
 def find_majority_id(clf):
-    counts = Counter(clf.labels_)
+    labels = cp.asnumpy(clf.labels_)
+    counts = Counter(labels)
+    # counts = Counter(clf.labels_)
     major_label = max(counts, key=counts.get)
     major_id = np.where(clf.labels_ == major_label)[0]
     #major_id = set(major_id.reshape(-1))
@@ -127,16 +134,20 @@ def find_targeted_attack(dict_lHoGs):
         imputer = SimpleImputer(strategy='mean')  # Other options: 'median', 'most_frequent', 'constant'
         value_lHoGs = imputer.fit_transform(value_lHoGs)
         
-    cluster_lh1 = KMeans(n_clusters=2, random_state=0).fit(value_lHoGs)
-    #cluster_lh = DBSCAN(eps=35, min_samples=7, metric='mahalanobis', n_jobs=-1).fit(value_lHoGs)
-    #logging.info(f"DBSCAN labels={cluster_lh.labels_}")
-    offset_tAtk_id1 = find_minority_id(cluster_lh1)
-    sus_tAtk_id = id_lHoGs[list(offset_tAtk_id1)]
-    logging.info(f"This round TARGETED ATTACK: {sus_tAtk_id}")
+    offset_tAtk_id1 = {}
+    sus_tAtk_id = np.array([])
+
+    if value_lHoGs.shape[1]!=0:
+        cluster_lh1 = KMeans(n_clusters=2, random_state=0).fit(value_lHoGs)
+        #cluster_lh = DBSCAN(eps=35, min_samples=7, metric='mahalanobis', n_jobs=-1).fit(value_lHoGs)
+        #logging.info(f"DBSCAN labels={cluster_lh.labels_}")
+        offset_tAtk_id1 = find_minority_id(cluster_lh1)
+        sus_tAtk_id = id_lHoGs[list(offset_tAtk_id1)]
+        logging.info(f"This round TARGETED ATTACK: {sus_tAtk_id}")
     return sus_tAtk_id
 
 class Server():
-    def __init__(self, model, dataLoader, criterion=F.nll_loss, device='cpu', minimumIterationToStartTheAttack=5, lr=0.01):
+    def __init__(self, model, dataLoader, criterion=F.nll_loss, device='cpu', minimumIterationToStartTheAttack=5, lr=0.01, coordinators = []):
         self.clients = []
         self.clientsNumOfBeingMalicious = []
         self.model = model
@@ -173,12 +184,14 @@ class Server():
         self.normal_clients = []
 
         self.minimumIterationToStartTheAttack = minimumIterationToStartTheAttack
-        
-        MaliciousCordinator.minimumIterationToStartTheAttack = minimumIterationToStartTheAttack
-        MaliciousCordinator.dbscan_eps = self.dbscan_eps
-        MaliciousCordinator.dbscan_min_samples = self.dbscan_min_samples
-        MaliciousCordinator.delay_decision = self.delay_decision
-        MaliciousCordinator.emptyStates = deepcopy(self.emptyStates)
+        self.coordinators = coordinators
+
+        for coordinator in self.coordinators:
+            coordinator.minimumIterationToStartTheAttack = minimumIterationToStartTheAttack
+            coordinator.dbscan_eps = self.dbscan_eps
+            coordinator.dbscan_min_samples = self.dbscan_min_samples
+            coordinator.delay_decision = self.delay_decision
+            coordinator.emptyStates = deepcopy(self.emptyStates)
 
         self.lastModelAccuracy = 0
 
@@ -328,43 +341,50 @@ class Server():
         return test_loss, accuracy, data, pred
 
     def train(self, group):
+
+        trainable_parameter = utils.getTrainableParameters(self.model)
+
+        print("trainable_parameter", trainable_parameter)
+
         selectedClients = [self.clients[i] for i in group]
-        MaliciousCordinator.attackerNodeBeforeAttackGradient = {}
-        MaliciousCordinator.attackerNodeBeforeAttackWeight = {}
-        MaliciousCordinator.attackerNodeAvgDelta = {}
-        MaliciousCordinator.attackerNodeSumDelta = {}
-        MaliciousCordinator.attackerNodehogAvgLen = {}
-        MaliciousCordinator.attackerNodeOfLabelFlipping = []
-        MaliciousCordinator.attackerNodeOfBackdoor = []
-        MaliciousCordinator.attackerNodeOfMultiLabelFlipping = []
-        MaliciousCordinator.normalNodeDummyValue = {}
-        MaliciousCordinator.normalNodeDummyAvgDelta = {}
-        MaliciousCordinator.normalNodeDummySumDelta = {}
-        MaliciousCordinator.normalNodeDummyhogAvgLen = {}
-        MaliciousCordinator.attackerNodes = []
-        MaliciousCordinator.numberOfAttackerNodesInCurrentIteration = 0
-        MaliciousCordinator.numberOfClientsTraining = len(selectedClients)
-        MaliciousCordinator.currentIteration = self.iter
-        MaliciousCordinator.attackerNodeChoosenGradientInThisIteration = {}
-        MaliciousCordinator.attackerNodeChoosenWeightInThisIteration = {}
-        MaliciousCordinator.attackerNodeChoosenAvgDeltaInThisIteration = {}
-        MaliciousCordinator.attackerNodeChoosenSumDeltaInThisIteration = {}
-        MaliciousCordinator.attackerNodeChoosenhogAvgLenInThisIteration = {}
-        MaliciousCordinator.lastModelAccuracy = self.lastModelAccuracy
-        MaliciousCordinator.model = deepcopy(self.model)
 
-        MaliciousCordinator.krumLamda = None
-        MaliciousCordinator.original_dir = None
-        
-        MaliciousCordinator.vi_shape = None
+        for coordinator in self.coordinators:
+            coordinator.attackerNodeBeforeAttackGradient = {}
+            coordinator.attackerNodeBeforeAttackWeight = {}
+            coordinator.attackerNodeAvgDelta = {}
+            coordinator.attackerNodeSumDelta = {}
+            coordinator.attackerNodehogAvgLen = {}
+            coordinator.attackerNodeOfLabelFlipping = []
+            coordinator.attackerNodeOfBackdoor = []
+            coordinator.attackerNodeOfMultiLabelFlipping = []
+            coordinator.normalNodeDummyValue = {}
+            coordinator.normalNodeDummyAvgDelta = {}
+            coordinator.normalNodeDummySumDelta = {}
+            coordinator.normalNodeDummyhogAvgLen = {}
+            coordinator.attackerNodes = []
+            coordinator.numberOfAttackerNodesInCurrentIteration = 0
+            coordinator.numberOfClientsTraining = len(selectedClients)
+            coordinator.currentIteration = self.iter
+            coordinator.attackerNodeChoosenGradientInThisIteration = {}
+            coordinator.attackerNodeChoosenWeightInThisIteration = {}
+            coordinator.attackerNodeChoosenAvgDeltaInThisIteration = {}
+            coordinator.attackerNodeChoosenSumDeltaInThisIteration = {}
+            coordinator.attackerNodeChoosenhogAvgLenInThisIteration = {}
+            coordinator.lastModelAccuracy = self.lastModelAccuracy
+            coordinator.model = deepcopy(self.model)
 
-        MaliciousCordinator.e_sigma = None
-        MaliciousCordinator.e_mu = None
+            coordinator.krumLamda = None
+            coordinator.original_dir = None
 
-        MaliciousCordinator.directed_dim = None
-        MaliciousCordinator.direction = None
+            coordinator.vi_shape = None
 
-        print(MaliciousCordinator.aggregationMethod)
+            coordinator.e_sigma = None
+            coordinator.e_mu = None
+
+            coordinator.directed_dim = None
+            coordinator.direction = None
+
+            print(coordinator.aggregationMethod)
 
         # for index, c in enumerate(selectedClients):
         #     c.train()
@@ -391,14 +411,15 @@ class Server():
         logging.info(f"[Server] The aggregation takes {toc - tic:0.6f} seconds.\n")
 
         for param in self.model.state_dict():
-            # if param == 'fc3.bias':
+
+            # if param == 'fc1.bias':
             #     print("param_stack", param)
             #     print()
             #     print("before self.model.state_dict()[param]", self.model.state_dict()[param])
             #     print()
 
             self.model.state_dict()[param] += Delta[param]
-            # if param == 'fc3.bias':
+            # if param == 'fc1.bias':
             #     print("Delta[param]", Delta[param])
             #     print()
             #     print("after self.model.state_dict()[param]", self.model.state_dict()[param])
@@ -440,7 +461,7 @@ class Server():
         param_nontrainable = [param for param in Delta.keys() if param not in param_trainable]
         for param in param_nontrainable:
             del Delta[param]
-        logging.info(f"[Server] Saving the model weight of the trainable paramters:\n {Delta.keys()}")
+        # logging.info(f"[Server] Saving the model weight of the trainable paramters:\n {Delta.keys()}")
         for param in param_trainable:
             ##stacking the weight in the innerest dimension
             param_stack = torch.stack([delta[param] for delta in deltas], -1)
@@ -478,22 +499,37 @@ class Server():
     def set_AR(self, ar):
         if ar == 'fedavg':
             self.AR = self.FedAvg
-            MaliciousCordinator.aggregationMethod = AggregationTypes.FedAvg
+            for coordinator in self.coordinators:
+                # coordinator.aggregationMethod = AggregationTypes.FedAvg
+                coordinator.aggregationMethod = AggregationTypes.MudHog
         elif ar == 'median':
             self.AR = self.FedMedian
-            MaliciousCordinator.aggregationMethod = AggregationTypes.Median
+            for coordinator in self.coordinators:
+                # coordinator.aggregationMethod = AggregationTypes.Median
+                coordinator.aggregationMethod = AggregationTypes.MudHog
         elif ar == 'gm':
             self.AR = self.geometricMedian
-            MaliciousCordinator.aggregationMethod = AggregationTypes.GM
+            for coordinator in self.coordinators:
+                # coordinator.aggregationMethod = AggregationTypes.GM
+                coordinator.aggregationMethod = AggregationTypes.MudHog
         elif ar == 'krum':
             self.AR = self.krum
-            MaliciousCordinator.aggregationMethod = AggregationTypes.Krum
+            for coordinator in self.coordinators:
+                # coordinator.aggregationMethod = AggregationTypes.Krum
+                coordinator.aggregationMethod = AggregationTypes.MudHog
+
         elif ar == 'mkrum':
             self.AR = self.mkrum
-            MaliciousCordinator.aggregationMethod = AggregationTypes.MKrum
+            for coordinator in self.coordinators:
+                # coordinator.aggregationMethod = AggregationTypes.MKrum
+                coordinator.aggregationMethod = AggregationTypes.MudHog
+
         elif ar == 'foolsgold':
             self.AR = self.foolsGold
-            MaliciousCordinator.aggregationMethod = AggregationTypes.FoolsGold
+            for coordinator in self.coordinators:
+                # coordinator.aggregationMethod = AggregationTypes.FoolsGold
+                coordinator.aggregationMethod = AggregationTypes.MudHog
+
         elif ar == 'residualbase':
             self.AR = self.residualBase
         elif ar == 'attention':
@@ -502,12 +538,16 @@ class Server():
             self.AR = self.net_mlp
         elif ar == 'mudhog':
             self.AR = self.mud_hog
-            MaliciousCordinator.aggregationMethod = AggregationTypes.MudHog
+            for coordinator in self.coordinators:
+                coordinator.aggregationMethod = AggregationTypes.MudHog
         elif ar == 'fedavg_oracle':
             self.AR = self.fedavg_oracle
         elif ar == 'trimmed':
             self.AR = self.trim
-            MaliciousCordinator.aggregationMethod = AggregationTypes.Trimmed
+            for coordinator in self.coordinators:
+                # coordinator.aggregationMethod = AggregationTypes.Trimmed
+                coordinator.aggregationMethod = AggregationTypes.MudHog
+
         else:
             raise ValueError("Not a valid aggregation rule or aggregation rule not implemented")
 
@@ -666,20 +706,35 @@ class Server():
                     #logging.debug("Detect FLIP_SIGN client={}".format(i))
             logging.info(f"flip_sign_id={flip_sign_id}")
             """
-            non_mal_sHoGs = dict(short_HoGs) # deep copy dict
-            for i in self.mal_ids:
-                non_mal_sHoGs.pop(i)
-            median_sHoG = np.median(np.array(list(non_mal_sHoGs.values())), axis=0)
-            # print("mud hug calcalated median for sign flipping", median_sHoG)
-            for i, v in short_HoGs.items():
-                #logging.info(f"median_sHoG={median_sHoG}, v={v}")
-                v = np.array(list(v))
-                d_cos = np.dot(median_sHoG, v)/(np.linalg.norm(median_sHoG)*np.linalg.norm(v))
-                if d_cos < 0: # angle > 90
-                    flip_sign_id.add(i)
-                    #logging.debug("Detect FLIP_SIGN client={}".format(i))
-            logging.info(f"flip_sign_id={flip_sign_id}")
+            # non_mal_sHoGs = dict(short_HoGs) # deep copy dict
+            # for i in self.mal_ids:
+            #     non_mal_sHoGs.pop(i)
+            # median_sHoG = np.median(np.array(list(non_mal_sHoGs.values())), axis=0)
+            # # print("mud hug calcalated median for sign flipping", median_sHoG)
+            # for i, v in short_HoGs.items():
+            #     #logging.info(f"median_sHoG={median_sHoG}, v={v}")
+            #     v = np.array(list(v))
+            #     d_cos = np.dot(median_sHoG, v)/(np.linalg.norm(median_sHoG)*np.linalg.norm(v))
+            #     if d_cos < 0: # angle > 90
+            #         flip_sign_id.add(i)
+            #         #logging.debug("Detect FLIP_SIGN client={}".format(i))
 
+            # Step 1: Deep copy and convert to GPU arrays
+            l_sHoGs = {k: cp.asarray(v) for k, v in short_HoGs.items()}
+            # Step 2: Create non-malicious subset
+            non_mal_sHoGs = {k: v for k, v in l_sHoGs.items() if k not in self.mal_ids}
+            # Step 3: Compute median vector on GPU
+            median_sHoG = cp.median(cp.stack(list(non_mal_sHoGs.values())), axis=0)
+            # Step 4: Loop through all clients and check cosine similarity
+            for i, v in l_sHoGs.items():
+                dot = cp.dot(median_sHoG, v)
+                norm_product = cp.linalg.norm(median_sHoG) * cp.linalg.norm(v)
+                
+                if norm_product != 0:
+                    d_cos = dot / norm_product
+                    if d_cos < 0:  # angle > 90 degrees
+                        flip_sign_id.add(i)
+            logging.info(f"flip_sign_id={flip_sign_id}")
 
             # STEP 2: Detect UNTARGETED ATTACK
             """ Exclude sign-flipping first, the remaining nodes include
@@ -719,44 +774,51 @@ class Server():
             if np.any(np.isnan(value_sHoGs)):
                 imputer = SimpleImputer(strategy='mean')
                 value_sHoGs = imputer.fit_transform(value_sHoGs)
-                
-            cluster_sh = DBSCAN(eps=self.dbscan_eps, n_jobs=-1,
-                min_samples=self.dbscan_min_samples).fit(value_sHoGs)
-            t_dbscan = time.time() - start_t
-            #logging.info(f"CLUSTER DBSCAN shortHoGs took {t_dbscan}[s]")
-            # TODO: comment out this line
-            logging.info("labels cluster_sh= {}".format(cluster_sh.labels_))
-            offset_normal_ids = find_majority_id(cluster_sh)
-            normal_ids = id_sHoGs[list(offset_normal_ids)]
-            normal_sHoGs = value_sHoGs[list(offset_normal_ids)]
-            normal_cent = np.median(normal_sHoGs, axis=0)
-            logging.debug(f"offset_normal_ids={offset_normal_ids}, normal_ids={normal_ids}")
 
-            # print("mud hug calcalated median for untargetted", normal_cent)
-
-            # suspicious ids of untargeted attacks and unreliable or targeted attacks.
-            offset_uAtk_ids = np.where(cluster_sh.labels_ == -1)[0]
-            sus_uAtk_ids = id_sHoGs[list(offset_uAtk_ids)]
-            logging.info(f"SUSPECTED UNTARGETED {sus_uAtk_ids}")
-
-            # suspicious_ids consists both additive-noise, targeted and unreliable clients:
-            suspicious_ids = [i for i in id_sHoGs if i not in normal_ids] # this includes sus_uAtk_ids
-            logging.debug(f"suspicious_ids={suspicious_ids}")
-            d_normal_sus = {} # distance from centroid of normal to suspicious clients.
-            for sid in suspicious_ids:
-                d_normal_sus[sid] = np.linalg.norm(short_HoGs[sid]-normal_cent)
-
-            # could not find separate points only based on suspected untargeted attacks.
-            #d_sus_uAtk_values = [d_normal_sus[i] for i in sus_uAtk_ids]
-            #d_separate = find_separate_point(d_sus_uAtk_values)
-            d_separate = find_separate_point(list(d_normal_sus.values()))
-            logging.debug(f"d_normal_sus={d_normal_sus}, d_separate={d_separate}")
             sus_tAtk_uRel_id0, uAtk_id = set(), set()
-            for k, v in d_normal_sus.items():
-                if v > d_separate and k in sus_uAtk_ids:
-                    uAtk_id.add(k)
-                else:
-                    sus_tAtk_uRel_id0.add(k)
+            
+            if value_sHoGs.shape[1] != 0:
+                # svd = TruncatedSVD(n_components=500, random_state=42)
+                # reduced_features = svd.fit_transform(value_sHoGs)
+                # cluster_sh = DBSCAN(eps=self.dbscan_eps, n_jobs=-1,
+                #     min_samples=self.dbscan_min_samples).fit(reduced_features)
+                cluster_sh = cuDBSCAN(eps=self.dbscan_eps, min_samples=self.dbscan_min_samples)
+                cluster_sh.fit(value_sHoGs)
+                t_dbscan = time.time() - start_t
+                #logging.info(f"CLUSTER DBSCAN shortHoGs took {t_dbscan}[s]")
+                # TODO: comment out this line
+                logging.info("labels cluster_sh= {}".format(cluster_sh.labels_))
+                offset_normal_ids = find_majority_id(cluster_sh)
+                normal_ids = id_sHoGs[list(offset_normal_ids)]
+                normal_sHoGs = value_sHoGs[list(offset_normal_ids)]
+                normal_cent = np.median(normal_sHoGs, axis=0)
+                logging.debug(f"offset_normal_ids={offset_normal_ids}, normal_ids={normal_ids}")
+
+                # print("mud hug calcalated median for untargetted", normal_cent)
+
+                # suspicious ids of untargeted attacks and unreliable or targeted attacks.
+                offset_uAtk_ids = np.where(cluster_sh.labels_ == -1)[0]
+                sus_uAtk_ids = id_sHoGs[list(offset_uAtk_ids)]
+                logging.info(f"SUSPECTED UNTARGETED {sus_uAtk_ids}")
+
+                # suspicious_ids consists both additive-noise, targeted and unreliable clients:
+                suspicious_ids = [i for i in id_sHoGs if i not in normal_ids] # this includes sus_uAtk_ids
+                logging.debug(f"suspicious_ids={suspicious_ids}")
+                d_normal_sus = {} # distance from centroid of normal to suspicious clients.
+                for sid in suspicious_ids:
+                    d_normal_sus[sid] = np.linalg.norm(short_HoGs[sid]-normal_cent)
+
+                # could not find separate points only based on suspected untargeted attacks.
+                #d_sus_uAtk_values = [d_normal_sus[i] for i in sus_uAtk_ids]
+                #d_separate = find_separate_point(d_sus_uAtk_values)
+                d_separate = find_separate_point(list(d_normal_sus.values()))
+                logging.debug(f"d_normal_sus={d_normal_sus}, d_separate={d_separate}")
+                sus_tAtk_uRel_id0, uAtk_id = set(), set()
+                for k, v in d_normal_sus.items():
+                    if v > d_separate and k in sus_uAtk_ids:
+                        uAtk_id.add(k)
+                    else:
+                        sus_tAtk_uRel_id0.add(k)
             logging.info(f"This round UNTARGETED={uAtk_id}, sus_tAtk_uRel_id0={sus_tAtk_uRel_id0}")
 
 
@@ -941,7 +1003,7 @@ class Server():
             trimmed_values = sorted_values[b:num_clients - b]
             
             # Compute mean and reshape
-            trimmed_means[param_key] = trimmed_values.mean(dim=0).reshape(
+            trimmed_means[param_key] = trimmed_values.float().mean(dim=0).reshape(
                 clients[0].model.state_dict()[param_key].shape
             )
 
@@ -1005,6 +1067,7 @@ class Server():
         return Delta
 
     def FedFuncWholeNet(self, clients, func):
+        # print(len(clients))
         '''
         The aggregation rule views the update vectors as stacked vectors (1 by d by n).
         '''
@@ -1017,6 +1080,13 @@ class Server():
         weights = [s/total_s for s in sizes]
         vecs = [utils.net2vec(delta) for delta in deltas]
         vecs = [vec for vec in vecs if torch.isfinite(vec).all().item()]
+        # print(len(vecs))
+        # print(len(weights))
+
+        # if len(vecs) == 0:
+        #     print(deltas)
+        #     ccccc = [c.model.state_dict() for c in clients]
+        #     print(ccccc)
         weighted_vecs = [w*v for w,v in zip(weights, vecs)]
         result = func(torch.stack(vecs, 1).unsqueeze(0))  # input as 1 by d by n
         result = result.view(-1)

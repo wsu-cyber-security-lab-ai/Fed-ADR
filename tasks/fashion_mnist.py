@@ -122,7 +122,7 @@ def getDataset():
 
 def basic_loader(num_clients, loader_type):
     dataset = getDataset()
-    return loader_type(num_clients, dataset)
+    return loader_type(num_clients, dataset, 0.9)
 
 
 def train_dataloader(num_clients, loader_type='iid', store=True, path='./data/loader.pk'):

@@ -97,7 +97,17 @@ def main(args):
     # create server instance
     model0 = Net()
     print("lr", args.lr)
-    server = Server(model0, testData, criterion, device, args.minimumIterationToStartTheAttack, args.lr)
+    coordinator1 = MaliciousCordinatorSecondVersion()
+    coordinator2 = MaliciousCordinatorSecondVersion()
+    coordinator3 = MaliciousCordinatorSecondVersion()
+
+    coordinator_array = [
+        coordinator1,
+        # coordinator2,
+        # coordinator3,
+    ]
+        
+    server = Server(model0, testData, criterion, device, args.minimumIterationToStartTheAttack, args.lr, coordinators = coordinator_array)
     server.set_AR(args.AR)
     if args.dataset == 'cifar':
         #server.set_AR_param(dbscan_eps=35.) # OK for untargeted attack, but does not detect potential targeted attack
@@ -171,7 +181,7 @@ def main(args):
                 criterion, device, args.omniscient_scale, args.inner_epochs)
         elif i in attacker_list_backdoor or i in args.list_tatk_backdoor:
             client_i = Attacker_Backdoor_Using_Coordinator(i, model, trainData[i], optimizer,
-                criterion, device, args.inner_epochs, isBackdoorAttacker=True)
+                criterion, device, args.inner_epochs, isBackdoorAttacker=True, coordinator=coordinator1, coordinator_idx=0)
 
             if 'RANDOM' in args.attacks.upper():
                 client_i.utils.setRandomTrigger(seed=args.attacks)
@@ -187,13 +197,17 @@ def main(args):
                 optimizer, criterion, device, args.inner_epochs)
         elif i in args.list_tatk_label_flipping:
             client_i = Attacker_LabelFlipping_Using_Coordinator(i, model, trainData[i],
-                optimizer, criterion, device, args.inner_epochs, args.source_labels[0], args.target_label, isLabelFlippingAttacker=True)
+                optimizer, criterion, device, args.inner_epochs, args.source_labels[0], args.target_label, isLabelFlippingAttacker=True, coordinator=coordinator1, coordinator_idx=0)
         elif i in args.list_tatk_multi_label_flipping:
             client_i = Attacker_MultiLabelFlipping_Using_Coordinator(i, model, trainData[i],
-                optimizer, criterion, device, args.inner_epochs, args.source_labels, args.target_label, isMultiLabelFlippingAttacker=True)
+                optimizer, criterion, device, args.inner_epochs, args.source_labels, args.target_label, isMultiLabelFlippingAttacker=True, coordinator=coordinator1, coordinator_idx=0)
         elif i in args.list_uatk_flip_sign:
+            idx = args.list_uatk_flip_sign.index(i)
+            coordinator_idx = idx%len(coordinator_array)
+            coordinator = coordinator_array[coordinator_idx]
+            # print("coordinator_idx", coordinator_idx)
             client_i = Attacker_Guassian_Using_Coordinator(i, model, trainData[i], optimizer,
-                criterion, device, args.omniscient_scale, args.inner_epochs, isSignFlippingAttacker=True)
+                criterion, device, args.omniscient_scale, args.inner_epochs, isSignFlippingAttacker=True, coordinator=coordinator, coordinator_idx=coordinator_idx)
         elif i in args.list_uatk_add_noise:
             client_i = Attacker_AddNoise_Grad(i, model, trainData[i], optimizer,
                 criterion, device, args.mean_add_noise, args.std_add_noise,
@@ -232,6 +246,7 @@ def main(args):
     writer.add_scalar('test/num_of_bengin_marked_as_malicious', 0, 0)
     writer.add_scalar('test/num_of_malicious_marked_as_bengin', 0, 0)
     writer.add_scalar('test/num_of_malicoius_marked_as_malicious', 0, 0)
+    writer.add_scalar('test/number_of_normal_clients', 0, 0)
 
     if args.attacks and 'BACKDOOR' in args.attacks.upper():
         if 'SEMANTIC' in args.attacks.upper():
@@ -323,6 +338,7 @@ def main(args):
         writer.add_scalar('test/num_of_bengin_marked_as_malicious', num_of_bengin_marked_as_malicious_percentage, steps)
         writer.add_scalar('test/num_of_malicious_marked_as_bengin', num_of_malicious_marked_as_bengin_percentage, steps)
         writer.add_scalar('test/num_of_malicoius_marked_as_malicious', num_of_malicoius_marked_as_malicious_percentage, steps)
+        writer.add_scalar('test/number_of_normal_clients', (len(selected_clients_labels_int)/args.num_clients)* 100, steps)
 
         # print("iteration result")
         # print("set(list_uatk_flip_sign)", set(list_uatk_flip_sign))

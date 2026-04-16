@@ -56,6 +56,8 @@ class Client():
     def train(self):
         self.model.to(self.device)
         self.model.train()
+        old = deepcopy(self.model.state_dict())
+        # print("before training", self.model.state_dict()["fc1.bias"])
         for epoch in range(self.inner_epochs):
             for batch_idx, (data, target) in enumerate(self.dataLoader):
                 data, target = self.data_transform(data, target)
@@ -65,8 +67,19 @@ class Client():
                 loss = self.criterion(output, target)
                 loss.backward()
                 #  to prevent the exploding gradient problem during training
-                torchutils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+                # torchutils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
                 self.optimizer.step()
+        # print("after training", self.model.state_dict()["fc1.bias"])
+        # print()
+
+        bias = self.model.state_dict()["fc1.bias"]
+        if torch.isnan(bias).any():
+            self.setModelParameter(deepcopy(old))
+            # print("nan ", self.model.state_dict()["fc1.bias"])
+            # print()
+
+
         self.isTrained = True
         self.model.cpu()  ## avoid occupying gpu when idle
 
@@ -94,7 +107,7 @@ class Client():
         assert self.isTrained, 'nothing to update, call train() to obtain gradients'
         newState = self.model.state_dict()
         for p in self.originalState:
-            self.stateChange[p] = newState[p] - self.originalState[p]
+            self.stateChange[p] = newState[p].cpu() - self.originalState[p].cpu()
             self.sum_hog[p] += self.stateChange[p]
             K_ = len(self.hog_avg)
             if K_ == 0:

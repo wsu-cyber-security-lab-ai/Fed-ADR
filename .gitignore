@@ -54,3 +54,8 @@ logs/
 logfiles/
 old_experiments/
 AggData/
+
+/results_logs*/
+/latest_results*/
+/old/
+/charts*/

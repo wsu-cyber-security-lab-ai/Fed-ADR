@@ -98,6 +98,8 @@ class dirichletLoader(customDataLoader):
         # and getPartition is used in parent constructor
         # hence need to initialize alpha first
         self.alpha = alpha
+        print("dirichlet alpha:", alpha)
+
         super(dirichletLoader, self).__init__(size, dataset, bsz)
 
     def getPartitions(self):

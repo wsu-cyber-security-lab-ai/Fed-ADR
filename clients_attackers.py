@@ -11,7 +11,8 @@ from clients import *
 from utils.blur_images import GaussianSmoothing
 import random
 import statistics
-from malicious_cordinator import MaliciousCordinator
+# from malicious_cordinator import MaliciousCordinator
+from malicious_cordinator_second_version import MaliciousCordinatorSecondVersion
 from attack_types import AttackTypes
 from aggregation_types import AggregationTypes
 
@@ -235,13 +236,15 @@ class Attacker_Omniscient(Client):
 
 class Attacker_Guassian_Using_Coordinator(Client):
     def __init__(self, cid, model, dataLoader, optimizer, criterion=F.nll_loss,
-            device='cpu', scale=1, inner_epochs=1, isSignFlippingAttacker=False):
+            device='cpu', scale=1, inner_epochs=1, isSignFlippingAttacker=False, coordinator=None, coordinator_idx = 0):
         super(Attacker_Guassian_Using_Coordinator, self).__init__(cid, model, dataLoader,
             optimizer, criterion, device, inner_epochs)
         logging.info("init ATTACK Coordinator Client {}".format(cid))
         self.scale = scale
         self.isSignFlippingAttacker = isSignFlippingAttacker
-        MaliciousCordinator.numberOfAttackerNodesAccessable+=1
+        self.coordinator = coordinator
+        self.coordinator_idx = coordinator_idx
+        self.coordinator.numberOfAttackerNodesAccessable += 1
 
     def update(self):
         assert self.isTrained, 'nothing to update, call train() to obtain gradients'
@@ -251,13 +254,16 @@ class Attacker_Guassian_Using_Coordinator(Client):
         isNewMalicoiusClientCalculated = False
         newMaliciousClient = None
         if self.isSignFlippingAttacker == True:
-            MaliciousCordinator.addMaliciousClientUpdate(self, AttackTypes.GuassianAttack)
-            result = MaliciousCordinator.calculateNewMalicoiusAttack(self, AttackTypes.GuassianAttack)
+            self.coordinator.addMaliciousClientUpdate(self, AttackTypes.GuassianAttack)
+            result = self.coordinator.calculateNewMalicoiusAttack(self, AttackTypes.GuassianAttack)
             isNewMalicoiusClientCalculated = result["isNewMalicoiusClientCalculated"]
             newMaliciousClient = result["newMaliciousClient"]
 
         for p in self.originalState:
-            self.stateChange[p] = newState[p] - self.originalState[p]
+            # self.stateChange[p] = newState[p].cpu() - self.originalState[p].cpu()
+            # self.stateChange[p] = newState[p] - self.originalState[p]
+            self.stateChange[p] = newState[p] - self.originalState[p].to(newState[p].device)
+
             if p not in trainable_parameter:
                 continue
             #             if not "FloatTensor" in self.originalState[p].type():
@@ -265,7 +271,10 @@ class Attacker_Guassian_Using_Coordinator(Client):
 
             if isNewMalicoiusClientCalculated == True:
                 newState[p] = newMaliciousClient[p]
-                self.stateChange[p] = newState[p] - self.originalState[p]
+                # self.stateChange[p] = newState[p].cpu() - self.originalState[p].cpu()
+                # self.stateChange[p] = newState[p] - self.originalState[p]
+                self.stateChange[p] = newState[p] - self.originalState[p].to(newState[p].device)
+
 
             self.sum_hog[p] += self.stateChange[p]
             K_ = len(self.hog_avg)
@@ -281,22 +290,39 @@ class Attacker_Guassian_Using_Coordinator(Client):
 
         if isNewMalicoiusClientCalculated == True:
             self.setModelParameter(deepcopy(newState))
-            MaliciousCordinator.attackerNodeChoosenGradientInThisIteration[self.cid] = deepcopy(self.stateChange)
-            MaliciousCordinator.attackerNodeChoosenWeightInThisIteration[self.cid] = deepcopy(newState)
-            MaliciousCordinator.attackerNodeChoosenAvgDeltaInThisIteration[self.cid] = deepcopy(self.avg_delta)
-            MaliciousCordinator.attackerNodeChoosenSumDeltaInThisIteration[self.cid] = deepcopy(self.sum_hog)
-            MaliciousCordinator.attackerNodeChoosenhogAvgLenInThisIteration[self.cid] = len(self.hog_avg)
+
+            self.coordinator.attackerNodeChoosenGradientInThisIteration[self.cid] = {}
+            self.coordinator.attackerNodeChoosenWeightInThisIteration[self.cid] = {}
+            self.coordinator.attackerNodeChoosenAvgDeltaInThisIteration[self.cid] = {}
+            self.coordinator.attackerNodeChoosenSumDeltaInThisIteration[self.cid] = {}
+
+            for p in self.originalState:
+                if p not in trainable_parameter:
+                    continue
+                self.coordinator.attackerNodeChoosenGradientInThisIteration[self.cid][p] = deepcopy(self.stateChange[p])
+                self.coordinator.attackerNodeChoosenWeightInThisIteration[self.cid][p] = deepcopy(newState[p])
+                self.coordinator.attackerNodeChoosenAvgDeltaInThisIteration[self.cid][p] = deepcopy(self.avg_delta[p])
+                self.coordinator.attackerNodeChoosenSumDeltaInThisIteration[self.cid][p] = deepcopy(self.sum_hog[p])
+
+            # self.coordinator.attackerNodeChoosenGradientInThisIteration[self.cid] = deepcopy(self.stateChange)
+            # self.coordinator.attackerNodeChoosenWeightInThisIteration[self.cid] = deepcopy(newState)
+            # self.coordinator.attackerNodeChoosenAvgDeltaInThisIteration[self.cid] = deepcopy(self.avg_delta)
+            # self.coordinator.attackerNodeChoosenSumDeltaInThisIteration[self.cid] = deepcopy(self.sum_hog)
+            self.coordinator.attackerNodeChoosenhogAvgLenInThisIteration[self.cid] = len(self.hog_avg)
 
 class Attacker_LabelFlipping_Using_Coordinator(Client):
     def __init__(self, cid, model, dataLoader, optimizer, criterion=F.nll_loss,
-            device='cpu', inner_epochs=1, source_label=1, target_label=7, isLabelFlippingAttacker=False):
+            device='cpu', inner_epochs=1, source_label=1, target_label=7, isLabelFlippingAttacker=False, coordinator=None, coordinator_idx = 0):
         super(Attacker_LabelFlipping_Using_Coordinator, self).__init__(cid, model, dataLoader,
             optimizer, criterion, device, inner_epochs)
         self.source_label = source_label
         self.target_label = target_label
+        self.coordinator = coordinator
+        
+        self.coordinator_idx = coordinator_idx
         logging.info(f"init ATTACK LABEL Change from {source_label} to {target_label} Client {cid}")
         self.isLabelFlippingAttacker = isLabelFlippingAttacker
-        MaliciousCordinator.numberOfAttackerNodesAccessable+=1
+        self.coordinator.numberOfAttackerNodesAccessable+=1
 
     def train(self):
         self.model.to(self.device)
@@ -314,18 +340,21 @@ class Attacker_LabelFlipping_Using_Coordinator(Client):
         self.model.cpu()  ## avoid occupying gpu when idle
 
         if self.isLabelFlippingAttacker == True:
-            MaliciousCordinator.addMaliciousClientUpdate(self, AttackTypes.LabelFlipping)
+            self.coordinator.addMaliciousClientUpdate(self, AttackTypes.LabelFlipping)
 
 class Attacker_MultiLabelFlipping_Using_Coordinator(Client):
     def __init__(self, cid, model, dataLoader, optimizer, criterion=F.nll_loss,
-            device='cpu', inner_epochs=1, source_labels=[1,2,3], target_label=7, isMultiLabelFlippingAttacker=False):
+            device='cpu', inner_epochs=1, source_labels=[1,2,3], target_label=7, isMultiLabelFlippingAttacker=False, coordinator=None, coordinator_idx = 0):
         logging.info(f"init ATTACK MULTI-LABEL-FLIPPING, change label {source_labels} to {target_label} Client {cid}")
         super(Attacker_MultiLabelFlipping_Using_Coordinator, self).__init__(cid, model,
             dataLoader, optimizer, criterion, device, inner_epochs)
         self.source_labels = source_labels
         self.target_label = target_label
         self.isMultiLabelFlippingAttacker = isMultiLabelFlippingAttacker
-        MaliciousCordinator.numberOfAttackerNodesAccessable+=1
+        self.coordinator = coordinator
+        
+        self.coordinator_idx = coordinator_idx
+        self.coordinator.numberOfAttackerNodesAccessable+=1
 
     def train(self):
         self.model.to(self.device)
@@ -343,17 +372,20 @@ class Attacker_MultiLabelFlipping_Using_Coordinator(Client):
         self.model.cpu()  ## avoid occupying gpu when idle
 
         if self.isMultiLabelFlippingAttacker == True:
-            MaliciousCordinator.addMaliciousClientUpdate(self, AttackTypes.MultiLabelFlipping)
+            self.coordinator.addMaliciousClientUpdate(self, AttackTypes.MultiLabelFlipping)
 
 class Attacker_Backdoor_Using_Coordinator(Client):
     def __init__(self, cid, model, dataLoader, optimizer, criterion=F.nll_loss,
-            device='cpu', inner_epochs=1, isBackdoorAttacker=False):
+            device='cpu', inner_epochs=1, isBackdoorAttacker=False, coordinator=None, coordinator_idx = 0):
         super(Attacker_Backdoor_Using_Coordinator, self).__init__(cid, model, dataLoader,
             optimizer, criterion, device, inner_epochs)
         self.utils = Backdoor_Utils()
         logging.info("init BACKDOOR ATTACK Client {}".format(cid))
         self.isBackdoorAttacker = isBackdoorAttacker
-        MaliciousCordinator.numberOfAttackerNodesAccessable+=1
+        self.coordinator = coordinator
+        
+        self.coordinator_idx = coordinator_idx
+        self.coordinator.numberOfAttackerNodesAccessable+=1
 
     def train(self):
         self.model.to(self.device)
@@ -371,7 +403,7 @@ class Attacker_Backdoor_Using_Coordinator(Client):
         self.model.cpu()  ## avoid occupying gpu when idle
 
         if self.isBackdoorAttacker == True:
-            MaliciousCordinator.addMaliciousClientUpdate(self, AttackTypes.BackDoor)
+            self.coordinator.addMaliciousClientUpdate(self, AttackTypes.BackDoor)
 
 class Attacker_AddNoise_Grad(Client):
     def __init__(self, cid, model, dataLoader, optimizer, criterion=F.nll_loss,

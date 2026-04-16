@@ -142,33 +142,33 @@ def loadInitialInfo(path):
 def loadIterationData(path, iteration, dataset, device, model):
     selected_clients_labels = load_labels_selected_on_iteration(path, iteration)
     selected_clients = load_clients_deltas_selected_on_iteration(path, iteration)
-
     trained_clients_labels = load_labels_trained_on_iteration(path, iteration)
     trained_clients = load_clients_deltas_trained_on_iteration(path, iteration)
-
     aggregated_model = load_aggregated_model_on_iteration(path, dataset, iteration, device, model)
-
     testingData = load_testing_results_from_file(path, iteration)
 
-    print("Iteration", iteration)
-    print("selected_clients_labels", selected_clients_labels)
-    # print("selected_clients", selected_clients)
-    # print("trained_clients_labels", trained_clients_labels)
-    # print("trained_clients", trained_clients)
-    # print("aggregated_model", aggregated_model)
-    print("testingData", {"accuracy": testingData['accuracy']})
-    print()
+    if iteration >= 20 and iteration <=25:
+        print("Iteration", iteration)
+        # print("selected_clients_labels", selected_clients_labels)
+        # print("selected_clients", selected_clients)
+        # print("trained_clients_labels", trained_clients_labels)
+        for m in trained_clients:
+            print(m["fc1.bias"])
+        # print("trained_clients", trained_clients)
+        # print("aggregated_model", aggregated_model)
+        # print("testingData", {"accuracy": testingData['accuracy']})
+        # print()
 
     return testingData, selected_clients_labels
 
 local_folder = "AggData"
-experiment = 'Exp_100C_40ep_15start_5_#__mnist_mudhog_40C_8MLF'
-dataset = "mnist"
+experiment = 'fashion_wrong_experiment_Exp_40C_40ep_10start_0_fashion_mnist_mudhog'
+dataset = "fashion_mnist"
 loader_type = "dirichlet"
 aggregation_method = "mudhog"
 num_clients = 40
 device = torch.device("cuda")
-num_of_iterations = 20
+num_of_iterations = 40
 loader_path = "./data/loader.pk"
 test_batch_size = 64
 
@@ -184,8 +184,9 @@ model, trainData, testData, criterion = load_dataset_info(dataset, num_clients, 
 writer = SummaryWriter(f'./results_logs/{loader_type}/{dataset}/{experiment}/{aggregation_method}')
 
 for iteration in range(num_of_iterations):
+    # print("new iteration")
     testingData, selected_clients_labels = loadIterationData(path, iteration, dataset, device, model)
-
+    # print("test")
     num_of_malicious_marked_as_bengin = 0
     num_of_bengin_marked_as_malicious = 0
     num_of_malicoius_marked_as_malicious = 0
@@ -224,7 +225,7 @@ for iteration in range(num_of_iterations):
     writer.add_scalar('test/num_of_bengin_marked_as_malicious', num_of_bengin_marked_as_malicious, iteration)
     writer.add_scalar('test/num_of_malicious_marked_as_bengin', num_of_malicious_marked_as_bengin, iteration)
     writer.add_scalar('test/num_of_malicoius_marked_as_malicious', num_of_malicoius_marked_as_malicious, iteration)
-
+    # print("end iteration")
 writer.close()
 
 
